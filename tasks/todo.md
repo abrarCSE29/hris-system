@@ -441,6 +441,32 @@ Update `docs/architecture-v2.md` or add a note that v2's chat slice is built as 
 **Files:** `README.md`, `ai-service/.env.example`, `backend/.env.example`, `DEBUG_LOG.md`
 **Scope:** S
 
+### Task 29: Record the channel and list my chat requests (backend)
+**Description:** New column `service_requests.channel` (enum `FORM` default, `CHAT`) with a migration; `POST /requests` accepts an
+optional `channel`; `GET /requests` gains `mine=true` (only my own) and `channel` filters; the summary includes `channel`.
+**Acceptance criteria:**
+- [x] `channel` stored (`CHAT`, default `FORM`); an invalid value is `422`; existing rows read as `FORM`
+- [x] `mine=true` returns only the caller's own requests, also for a Manager and an HR Admin; `channel=CHAT` only chat ones; scope rules unchanged
+**Verification:**
+- [x] Vitest against the test DB; migration reviewed; `prisma migrate diff` shows no drift
+**Dependencies:** T25, T26
+**Files:** `backend/prisma/schema.prisma`, a new migration, `backend/src/services/requests.ts`, `backend/tests/requests.test.ts`, `docs/architecture-v1.md`
+**Scope:** S
+
+### Task 30: Earlier requests in the chat thread (frontend)
+**Description:** Rework the panel as a chat thread: greeting bubble, then the person's earlier chat requests as bubble pairs (their
+title on the right, the assistant's card on the left with reference link, department, live status, priority, time), then the
+current step; the message box stays at the bottom while composing. The list loads when the panel opens and is refreshed after Submit.
+The chat head sends `channel: "CHAT"` when submitting.
+**Acceptance criteria:**
+- [ ] Pairs in order (oldest first, newest at the bottom), live status badge, link to the request; loading, error and empty states; the greeting stays first
+- [ ] A just-submitted request appears in the thread; form requests do not; the draft behaviour from T27 is unchanged
+**Verification:**
+- [ ] Component tests; `npx tsc --noEmit`; manual in the browser (not possible here)
+**Dependencies:** T29, T27
+**Files:** `frontend/components/chat/{bubble,past-requests,chat-head}.tsx`, `frontend/lib/hooks/chat.ts`, `frontend/lib/hooks/requests.ts`, `frontend/lib/types.ts`, `frontend/tests/chat-*.test.tsx`
+**Scope:** M
+
 ### Checkpoint: AI chat draft complete
 - [ ] All acceptance criteria met; all test suites pass; no automated test calls Gemini
 - [ ] Ready for review

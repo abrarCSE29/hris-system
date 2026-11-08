@@ -1,6 +1,6 @@
 # Spec: AI chat draft for service requests
 
-Status: **approved (v6).** Last change: the chat record is for developers only; HR Admin has no page or endpoint for it. Source: `docs/intent/ai-chat-draft.md` (confirmed in an interview).
+Status: **approved (v7).** Last change: the chat shows the person's earlier requests made through it, as chat bubbles; requests now record their channel (FORM or CHAT). Source: `docs/intent/ai-chat-draft.md` (confirmed in an interview).
 Relationship to `docs/architecture-v2.md`: this builds a **narrow slice of §7.2** (the chat assistant) with Gemini in
 place of the generic LLM, and deliberately leaves out the rest of v2. Where the two differ, this spec wins for this
 build (see [What differs from v2](#what-differs-from-v2)).
@@ -48,8 +48,10 @@ pass; a person confirms it.
    message text, the requester's country and department name are sent **to Google**; never a name, email or id. The
    caller's identity is kept only in our own database (assumption 8), never sent to Google or to the AI service.
 5. **One message in, one draft out.** No conversation history, no follow-up turns, no clarifying questions.
-6. The **request itself** does not record that it came from chat (no `channel`, draft token or transcript columns on
-   `service_requests`). The record of chat use is its own table (assumption 8).
+6. A request records **how it was raised**: a new `channel` column on `service_requests` (`FORM` by default, `CHAT` when it was
+   submitted from the assistant). This is what lets the chat show the person's earlier requests (see
+   [Earlier requests in the chat](#earlier-requests-in-the-chat)); you chose this over a browser-only or "all my requests" list.
+   There is still no draft token or transcript column. The separate developer record of chat use is its own table (assumption 8).
 7. The Gemini API key is added by the user in `ai-service/.env`. I will not read, print or commit it.
 8. **Chat record (your requirement): every chat draft is recorded, and the web app shows the records.**
    - **The AI service stays stateless.** It writes no files and has no database. A file on a hosted AI service (Render and
@@ -114,13 +116,15 @@ backend/
   app/api/v1/requests/chat-draft/route.ts   POST /requests/chat-draft
   src/lib/ai-client.ts                      calls the AI service (token, timeout, error mapping)
   src/services/intake.ts                    builds the call, validates the AI's answer, maps codes to ids, writes the record
-  src/services/requests.ts                  createRequest accepts an optional handlingDepartmentId (below)
+  src/services/requests.ts                  createRequest accepts optional channel and handlingDepartmentId; list filters mine and channel
   prisma/schema.prisma + migration          new table chat_drafts (below)
   tests/chat-draft.test.ts
 frontend/
   components/chat/chat-head.tsx             floating button + sheet
   components/chat/request-card.tsx          the editable draft card
-  lib/hooks/chat.ts                         useChatDraft mutation
+  components/chat/bubble.tsx                chat bubbles (their side and the assistant's)
+  components/chat/past-requests.tsx         the earlier requests as bubble pairs
+  lib/hooks/chat.ts                         useChatDraft mutation, useChatRequests query
   app/(app)/layout.tsx                      mounts the chat head
   tests/chat-*.test.tsx
 ```
@@ -181,10 +185,33 @@ No request is created. The backend makes a **request id** (a uuid) for the call,
 before responding, and a failure to write it is logged on the server and never fails or delays the draft. Errors: `401` not signed in, `422` bad message, `503` `{ error: { code: "AI_UNAVAILABLE", … } }` when the
 AI service is down, times out, or returns something that fails validation.
 
-`POST /api/v1/requests` gains one **optional** field, `handlingDepartmentId` (uuid). When present it must be an existing
+`POST /api/v1/requests` gains two **optional** fields. `channel` (`FORM` or `CHAT`, default `FORM`) says how it was raised; the chat head sends `CHAT`. `handlingDepartmentId` (uuid): When present it must be an existing
 department and is used as the request's handling department; when absent the category's department is used, as today. This
-is what lets the employee send a draft to a different department than the category's. It affects the request's visibility
+is what lets the employee send a draft to a different department than the category's. (`channel` is a label for the person's own history; it
+changes no permission and no routing.) It affects the request's visibility
 (the department's Manager sees it) and nothing else.
+
+## Earlier requests in the chat
+
+The panel is a chat thread. Above the current step it shows the person's **earlier requests made through the assistant**, oldest
+first, newest at the bottom, scrollable, each as a pair of bubbles:
+
+- **Their bubble (right, black):** the request's title, as what they asked for.
+- **The assistant's bubble (left, grey):** the reference (a link to the request), the department it was sent to, the **live**
+  status and priority badges, and when it was raised.
+
+Behaviour:
+
+- Source: `GET /api/v1/requests?mine=true&channel=CHAT&pageSize=20`. `mine=true` limits the list to requests the signed-in person
+  raised (a Manager or HR Admin otherwise sees more); `channel=CHAT` limits it to those raised through the assistant. Newest 20.
+- The list loads when the panel opens and again each time it is opened, so statuses are current. While loading it shows a
+  placeholder; if it fails it says "Couldn't load your earlier requests" and the rest of the chat still works; if there are none the
+  thread starts with the greeting only.
+- A request just submitted from the chat appears in the thread straight away (the list is refreshed after Submit).
+- The greeting is the first assistant bubble. The current step (message box, draft card, confirmation) sits at the end of the
+  thread, with the message box fixed at the bottom while composing. The thread scrolls to the newest item when it opens and when it changes.
+- Only requests raised through the chat appear; requests made with the form are not part of this thread.
+- This stores nothing new for the thread: it is built from the requests themselves. The message text is still never stored.
 
 ## The draft card (frontend)
 
@@ -323,7 +350,8 @@ def draft_request(req: DraftRequest, model: BaseChatModel) -> Draft:
 |---|---|---|
 | AI service unit | **Stateless:** it writes no file and opens no database connection. **Logs:** one JSON line per event with the request id from `X-Request-Id`; a failing call prints a traceback; a failing call whose input contains a recognisable message never prints that message (Pydantic input values and wrapped errors are redacted); the API key never appears; `DEBUG_LOG_PROMPTS` is off by default and, when on, warns at startup; every error response carries the request id and a cause without input text. Token check (missing, wrong, right); body validation; the drafter with a **fake chat model**: valid output, unknown category code then valid on retry, invalid twice → `502`, timeout → `504`, low confidence flag at the 0.6 threshold; the prompt contains the categories and the message only as data; the prompt sent to the model contains the message, country and department name only | pytest |
 | Backend integration | `chat-draft` with the AI client mocked: success maps codes to ids; **a `chat_drafts` row is written for every outcome, with the request id that was sent to the AI service and an `error_code`, a short `error` reason and a redacted `error_detail` for each failure kind (connection refused, timeout, 401, 429, model error, invalid output, rejected by the backend, bad response shape), `attempts` stored; `error_detail` never contains the message text** (OK, invalid output, timeout, unavailable) with the signed-in user's id (a `userId` sent in the body is a `422`), the page, IP and user agent, the model, latency and chosen values, the message length and **never the text**; if writing the row fails the draft is still returned; `401`, `422` (empty, too long, extra field); AI down, timeout, invalid category or department code, priority outside the enum → `503`; nothing is written to the database; `POST /requests` with and without `handlingDepartmentId`, with an unknown department → `422` | Vitest, real test DB |
-| Frontend | The request sends the current page path. Chat head appears in the signed-in layout only; send disabled while empty/waiting; card shows AI badges and the low-confidence note; every field editable; category change sets the department; submit sends the edited values (including `handlingDepartmentId`); AI-down shows the fallback; the sheet keeps the draft when closed and reopened | Vitest + Testing Library |
+| Backend (channel and history) | `POST /requests` stores `channel` (`CHAT`, default `FORM`, invalid is `422`); `GET /requests` with `mine=true` returns only the caller's own requests (also for a Manager and an HR Admin) and with `channel=CHAT` only chat ones; scope rules are unchanged; ordering and paging | Vitest, real test DB |
+| Frontend | The request sends the current page path. Earlier requests: bubble pairs in order, live status badge, link to the request, loading, error and empty states, refreshed after Submit; the greeting stays first. Chat head appears in the signed-in layout only; send disabled while empty/waiting; card shows AI badges and the low-confidence note; every field editable; category change sets the department; submit sends the edited values (including `handlingDepartmentId`); AI-down shows the fallback; the sheet keeps the draft when closed and reopened | Vitest + Testing Library |
 | Quality (by hand) | ~15 labelled messages (including the laptop example, a vague "it's broken", a non-English message, an injection attempt, a facilities and an HR query) | `uv run python -m eval.run`, needs the key |
 
 Coverage target: every branch in the drafter and in `intake.ts` has a test. No test calls the real Gemini API.
@@ -333,7 +361,7 @@ Coverage target: every branch in the drafter and in `intake.ts` has a test. No t
 - **Always:** keep the AI service stateless (no files, no database); validate every AI answer in the backend before returning it;
   let the employee see and edit every field before anything is saved; keep the existing form working; run the type-check
   and tests before committing; keep secrets in `.env` files that are git-ignored; use a separate branch.
-- **Ask first:** adding a dependency beyond those listed; any database schema change (this build needs none); adding the message text
+- **Ask first:** adding a dependency beyond those listed; any further database schema change (this build adds `chat_drafts` and `service_requests.channel`, both approved); adding the message text
   to the chat record; any retention or deletion of records; sending anything but the message, country and department name to Gemini; deploying the AI service.
 - **Never:** let the AI submit, assign or write anything; commit or print `GOOGLE_API_KEY` or `AI_SERVICE_TOKEN`; log or store
   message text (the record shows who and from where, not what was said); let the AI service write files or reach the database; turn on `DEBUG_LOG_PROMPTS` in production; call the real Gemini API from automated tests; expose the AI service to the browser; remove or weaken the existing
@@ -361,7 +389,7 @@ Coverage target: every branch in the drafter and in `intake.ts` has a test. No t
 |---|---|
 | Multi-turn chat: questions, "Add details" re-draft | One message, one draft; edits are by hand |
 | `QUESTION`, `DRAFT`, `OUT_OF_SCOPE` replies | Always a draft; vague or off-topic gets `lowConfidence` |
-| Signed draft token, `channel`, `intake_transcript`, `AI` vs `USER` sources | None on `service_requests`. Instead a new `chat_drafts` table (written by the backend) records who asked and from where, for developers to query (no product screen) |
+| Signed draft token, `channel`, `intake_transcript`, `AI` vs `USER` sources | Only `channel` (FORM or CHAT) is recorded on `service_requests`, to show earlier chat requests; no token, transcript or sources. Instead a new `chat_drafts` table (written by the backend) records who asked and from where, for developers to query (no product screen) |
 | AI service reads `ai_*` views with a read-only database role | The backend sends the categories and departments; the AI service has no database access |
 | Generic "LLM", Pydantic-validated JSON | Gemini Flash via LangChain `with_structured_output` |
 | Post-submission routing, assignee recommendation, dashboard AI card | Not built |
@@ -381,10 +409,12 @@ Coverage target: every branch in the drafter and in `intake.ts` has a test. No t
 8. Every call to `chat-draft`, successful or not, adds one `chat_drafts` row with who asked and from where, and no message
    text; a failure to write a row never breaks a draft; the AI service writes no files. No page, endpoint or nav item exposes
    the record: an HR Admin has no way to see it.
-9. When the AI service is down, a developer can find out from the database alone: failed rows carry an error code, a short
+9. Requests submitted from the assistant have `channel = CHAT`; the chat shows the person's own earlier chat requests, oldest first, with
+   their live status, and nobody else's. Form requests are not in the thread.
+10. When the AI service is down, a developer can find out from the database alone: failed rows carry an error code, a short
    reason, a redacted detail and a request id, and the example queries in the runbook return them; for a failure inside the
    service, searching its logs for that request id finds a traceback that contains no message text.
-10. Backend tests, frontend tests, AI service tests and both type-checks pass; no automated test calls Gemini.
+11. Backend tests, frontend tests, AI service tests and both type-checks pass; no automated test calls Gemini.
 
 ## Decided since the first draft
 
@@ -397,6 +427,5 @@ Coverage target: every branch in the drafter and in `intake.ts` has a test. No t
 
 1. **Retention.** Records are kept indefinitely in this build. Do you want a limit later (for example delete after 12
    months)? Nothing to decide now unless you want it built.
-2. **Link to the request.** Do you want a record linked to the request the employee eventually submits (so HR can see "this
-   request was drafted by the assistant")? It would need one more column and is not in this build.
+2. **Link a developer record to its request.** `chat_drafts` rows are not linked to the request that was later submitted. Not in this build.
 3. **Where the work is tracked:** as new tasks (T23 onward) in `tasks/todo.md` once approved.
