@@ -158,8 +158,8 @@ frontend/
 }
 ```
 
-Errors: `401` bad or missing token, `422` bad body, `502` the model failed or returned invalid output twice,
-`504` timed out. Every error body is `{ "error": { "code": "…", "message": "…", "type": "…", "detail": "…" }, "requestId": "<the id sent>" }`,
+Errors: `401` bad or missing token, `422` bad body, `429` `RATE_LIMITED` (Gemini's quota), `502` `MODEL_ERROR`, `MODEL_AUTH` (the model API
+rejected our key), `MODEL_NOT_CONFIGURED` (no key set) or `INVALID_OUTPUT` (the model's answer was invalid twice), `504` `TIMEOUT`. Every error body is `{ "error": { "code": "…", "message": "…", "type": "…", "detail": "…" }, "requestId": "<the id sent>" }`,
 so the backend can store the id and the reason. `message` is a short cause; `type` is the exception class; `detail` is the
 **redacted** traceback trimmed to 4,000 characters (frames and causes, **no input text**). Examples of `message`: `model returned
 an unknown category code`, `google api returned 429`. A successful response also reports `attempts` (1 or 2). `GET /health` is public and returns `{ "status": "ok", "model": "…" }`;

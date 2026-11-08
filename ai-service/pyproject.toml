@@ -8,6 +8,8 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
+    "langchain-core>=1.7.6",
+    "langchain-google-genai>=4.4.3",
 ]
 
 [dependency-groups]
@@ -19,7 +21,10 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-filterwarnings = ["error::DeprecationWarning:app.*"]
+filterwarnings = [
+    "error::DeprecationWarning:app.*",
+    "ignore::DeprecationWarning:langsmith.*",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

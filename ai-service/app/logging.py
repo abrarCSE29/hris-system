@@ -38,6 +38,13 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(entry, default=str)
 
 
+class _NoRequestUrls(logging.Filter):
+    """Drops HTTP client "HTTP Request: METHOD URL" lines whatever library or logger name they come from."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not record.getMessage().startswith("HTTP Request:")
+
+
 class _StdoutHandler(logging.StreamHandler):
     """Looks up sys.stdout on every write, so it follows redirection (and tests can capture it)."""
 
@@ -56,6 +63,7 @@ class _StdoutHandler(logging.StreamHandler):
 def setup_logging(level: str = "INFO") -> None:
     handler = _StdoutHandler()
     handler.setFormatter(JsonFormatter())
+    handler.addFilter(_NoRequestUrls())
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level.upper())
@@ -64,6 +72,9 @@ def setup_logging(level: str = "INFO") -> None:
         lg = logging.getLogger(name)
         lg.handlers = []
         lg.propagate = True
+    # HTTP client libraries log full request URLs at INFO. Keep them quiet so no URL (and nothing that might be in one) is printed.
+    for name in ("httpx", "httpx2", "httpcore", "urllib3", "google_genai", "google.auth", "langsmith"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     access = logging.getLogger("uvicorn.access")
     access.handlers = []
     access.propagate = False

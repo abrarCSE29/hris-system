@@ -364,19 +364,19 @@ validate the answer against the codes received, retry once, and return the draft
 `latencyMs`, `attempts`. Failures return the error body (code, message, type, redacted detail, request id) with the right status
 (`502`, `504`, `429` mapped). Small labelled evaluation set and `eval/run.py`.
 **Acceptance criteria:**
-- [ ] Valid output, an unknown code then a valid retry (`attempts: 2`), invalid twice (`502`), timeout (`504`), rate limit, all behave as the spec says
-- [ ] `lowConfidence` is true below `CONFIDENCE_THRESHOLD`; a non-request message returns category Other with `lowConfidence`
-- [ ] The prompt holds the message only as data; only the message, country and department name reach the model
-- [ ] `DEBUG_LOG_PROMPTS` is off by default and warns when on
+- [x] Valid output, an unknown code then a valid retry (`attempts: 2`), invalid twice (`502`), timeout (`504`), rate limit, all behave as the spec says
+- [x] `lowConfidence` is true below `CONFIDENCE_THRESHOLD`; a non-request message returns category Other with `lowConfidence`
+- [x] The prompt holds the message only as data; only the message, country and department name reach the model
+- [x] `DEBUG_LOG_PROMPTS` is off by default and warns when on
 **Verification:**
-- [ ] `uv run pytest` with a fake chat model; no test calls Gemini
-- [ ] **By hand with the user's key:** `uv run python -m eval.run` reaches at least 13 of 15 on category and the laptop example is IT Equipment / Urgent / IT Operations
+- [x] `uv run pytest` with a fake chat model; no test calls Gemini
+- [x] **By hand with the user's key:** `uv run python -m eval.run` reached 15 of 15 on category; the laptop example is IT Equipment / Urgent / IT Operations (checked through HTTP as well)
 **Dependencies:** T23
 **Files:** `ai-service/app/{drafter,prompts,schemas}.py`, `ai-service/eval/*`, `ai-service/tests/*`
 **Scope:** M
 
 ### Checkpoint: AI service alone
-- [ ] Tests pass; `curl` with a message returns a draft; failures carry request id and redacted trace
+- [x] Tests pass; a message over HTTP returns a draft; failures carry request id and redacted trace
 - [ ] Review with the user (needs their Gemini key in `ai-service/.env`)
 
 ## Phase 6 — Backend (the chat record is for developers: no page, no endpoint)
@@ -398,6 +398,7 @@ replaces the category's department as the handling department; absent behaves as
 maps codes to ids, and **writes one `chat_drafts` row for every outcome** (who from the session, page, IP, user agent, request id,
 outcome, `error_code`, `error`, redacted `error_detail`, `attempts`, model, latency, chosen values, message length, never the text).
 A failure to write the row never fails the draft.
+**Note:** the categories table has no `description` column, and the AI needs one. Keep the descriptions in a backend constant (same text as `ai-service/eval/categories.py`) rather than adding a column.
 **Acceptance criteria:**
 - [ ] Success returns ids and values; `401`, `422` (empty, too long, extra field, a `userId` in the body); `503` for unreachable, timeout, auth, rate limit, bad shape, invalid output, rejected codes
 - [ ] A row exists for each of those outcomes with the right `error_code`; `error_detail` never contains the message
