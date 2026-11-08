@@ -15,6 +15,8 @@ export const createRequestBody = z
     title: z.string().trim().min(1).max(200),
     description: z.string().trim().min(1).max(5000),
     priority: z.enum(RequestPriority),
+    // Optional: send it to a different department than the category's (the chat assistant's draft lets the employee choose).
+    handlingDepartmentId: z.uuid().optional(),
   })
   .strict();
 
@@ -87,6 +89,15 @@ export async function createRequest(actor: AuthUser, input: z.infer<typeof creat
   if (!category) {
     throw new ApiError("VALIDATION_FAILED", "Unknown category", [{ path: "categoryId", message: "Category not found" }]);
   }
+  // The requester may choose where it goes; otherwise it goes to the category's department.
+  let handlingDepartmentId = category.handlingDepartmentId;
+  if (input.handlingDepartmentId && input.handlingDepartmentId !== handlingDepartmentId) {
+    const department = await prisma.department.findUnique({ where: { id: input.handlingDepartmentId }, select: { id: true } });
+    if (!department) {
+      throw new ApiError("VALIDATION_FAILED", "Unknown department", [{ path: "handlingDepartmentId", message: "Department not found" }]);
+    }
+    handlingDepartmentId = department.id;
+  }
   // The request and its first history row are written together or not at all.
   const created = await prisma.$transaction(async (tx) => {
     const request = await tx.serviceRequest.create({
@@ -94,7 +105,7 @@ export async function createRequest(actor: AuthUser, input: z.infer<typeof creat
         requesterId: actor.id,
         categoryId: category.id,
         // Copied now, so later re-routing of a category doesn't move existing requests.
-        handlingDepartmentId: category.handlingDepartmentId,
+        handlingDepartmentId,
         title: input.title,
         description: input.description,
         priority: input.priority,

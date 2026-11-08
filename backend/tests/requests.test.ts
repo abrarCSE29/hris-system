@@ -93,6 +93,51 @@ describe("POST /requests", () => {
     expect((await json(await create(strangerId, payload({ categoryId: cat.HR_QUERY })))).handlingDepartment.code).toBe("PEOPLE");
   });
 
+  describe("choosing the department", () => {
+    let opsDeptId: string;
+    beforeAll(async () => {
+      opsDeptId = (await db.department.findUniqueOrThrow({ where: { code: "OPS" } })).id;
+    });
+
+    it("sends the request to the chosen department instead of the category's, and keeps the category", async () => {
+      const res = await create(strangerId, payload({ handlingDepartmentId: opsDeptId }));
+      const body = await json(res);
+      expect(res.status).toBe(201);
+      expect(body).toMatchObject({ category: { code: "IT_EQUIPMENT" }, handlingDepartment: { code: "OPS" } });
+      expect((await db.serviceRequest.findUniqueOrThrow({ where: { id: body.id } })).handlingDepartmentId).toBe(opsDeptId);
+    });
+
+    it("uses the category's department when none is chosen", async () => {
+      const body = await json(await create(strangerId, payload()));
+      expect(body.handlingDepartment.code).toBe("ITOPS");
+    });
+
+    it("accepts the category's own department explicitly", async () => {
+      const itDeptId = (await db.department.findUniqueOrThrow({ where: { code: "ITOPS" } })).id;
+      expect((await json(await create(strangerId, payload({ handlingDepartmentId: itDeptId })))).handlingDepartment.code).toBe("ITOPS");
+    });
+
+    it("puts it in the chosen department's Manager's view, and not in the category's department's", async () => {
+      const body = await json(await create(strangerId, payload({ title: "Sent to Operations", handlingDepartmentId: opsDeptId })));
+      expect((await detail(opsHeadId, body.id)).status).toBe(200);
+      expect((await detail(itHeadId, body.id)).status).toBe(404);
+      const queue = await json(await list(opsHeadId, "?pageSize=100"));
+      expect(queue.data.map((r: any) => r.id)).toContain(body.id);
+    });
+
+    it("lets every role choose a department", async () => {
+      for (const userId of [ids.personas.newHire, ids.personas.manager, ids.personas.hrAdmin]) {
+        expect((await create(userId, payload({ handlingDepartmentId: opsDeptId }))).status).toBe(201);
+      }
+    });
+
+    it("explains an unknown department with the field name", async () => {
+      const body = await json(await create(strangerId, payload({ handlingDepartmentId: crypto.randomUUID() })));
+      expect(body.error.code).toBe("VALIDATION_FAILED");
+      expect(body.error.details).toEqual([{ path: "handlingDepartmentId", message: "Department not found" }]);
+    });
+  });
+
   it.each([
     ["unknown category", { categoryId: crypto.randomUUID() }],
     ["non-uuid category", { categoryId: "abc" }],
@@ -102,7 +147,9 @@ describe("POST /requests", () => {
     ["bad priority", { priority: "CRITICAL" }],
     ["client-supplied status", { status: "CLOSED" }],
     ["client-supplied requester", { requesterId: crypto.randomUUID() }],
-    ["client-supplied department", { handlingDepartmentId: crypto.randomUUID() }],
+    ["unknown department", { handlingDepartmentId: crypto.randomUUID() }],
+    ["non-uuid department", { handlingDepartmentId: "abc" }],
+    ["null department", { handlingDepartmentId: null }],
   ])("returns 422 for %s and stores nothing", async (_n, over) => {
     const before = await db.serviceRequest.count();
     expect((await create(strangerId, payload(over))).status).toBe(422);

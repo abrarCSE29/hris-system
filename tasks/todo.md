@@ -385,9 +385,9 @@ validate the answer against the codes received, retry once, and return the draft
 **Description:** `POST /requests` accepts an optional `handlingDepartmentId`; when present it must be an existing department and
 replaces the category's department as the handling department; absent behaves as today.
 **Acceptance criteria:**
-- [ ] With and without the field; an unknown department gives `422`; the chosen department's Manager sees the request
+- [x] With and without the field; an unknown department gives `422`; the chosen department's Manager sees the request
 **Verification:**
-- [ ] Vitest against the test DB; existing request tests still pass
+- [x] Vitest against the test DB; existing request tests still pass
 **Dependencies:** None
 **Files:** `backend/src/services/requests.ts`, `backend/tests/requests.test.ts`, `docs/architecture-v1.md`
 **Scope:** S
