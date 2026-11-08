@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent, { PointerEventsCheckLevel } from "@testing-library/user-event";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/lib/api";
-import type { ChatDraft, Meta } from "@/lib/types";
+import type { ChatDraft, Meta, RequestSummary } from "@/lib/types";
 
 const META = {
   departments: [
@@ -29,11 +29,19 @@ const draftReset = vi.fn();
 const createMutate = vi.fn();
 const createReset = vi.fn();
 let draftState: { isPending: boolean; isError: boolean };
+let historyState: { data: { data: RequestSummary[] } | undefined; isPending: boolean; isError: boolean };
+const historyEnabled = vi.fn();
 let createState: { isPending: boolean; error: unknown };
 
 vi.mock("next/navigation", () => ({ usePathname: () => pathname }));
 vi.mock("@/lib/hooks/users", () => ({ useMeta: () => ({ data: META }) }));
-vi.mock("@/lib/hooks/chat", () => ({ useChatDraft: () => ({ mutate: draftMutate, reset: draftReset, ...draftState }) }));
+vi.mock("@/lib/hooks/chat", () => ({
+  useChatDraft: () => ({ mutate: draftMutate, reset: draftReset, ...draftState }),
+  useChatRequests: (enabled: boolean) => {
+    historyEnabled(enabled);
+    return historyState;
+  },
+}));
 vi.mock("@/lib/hooks/requests", () => ({ useCreateRequest: () => ({ mutate: createMutate, reset: createReset, ...createState }) }));
 
 import { ChatHead } from "@/components/chat/chat-head";
@@ -47,6 +55,8 @@ beforeAll(() => {
 beforeEach(() => {
   pathname = "/people";
   draftState = { isPending: false, isError: false };
+  historyState = { data: { data: [] }, isPending: false, isError: false };
+  historyEnabled.mockReset();
   createState = { isPending: false, error: null };
   draftMutate.mockReset().mockImplementation((_body, opts) => opts?.onSuccess?.(DRAFT));
   createMutate.mockReset().mockImplementation((_body, opts) =>
@@ -198,7 +208,7 @@ describe("Submitting", () => {
     await userEvent.click(within(card).getByRole("button", { name: "Submit request" }));
     expect(createMutate).toHaveBeenCalledOnce();
     expect(createMutate.mock.calls[0][0]).toEqual({
-      categoryId: "c-fac", title: "Laptop too hot", description: "The laptop is getting very hot.", priority: "HIGH", handlingDepartmentId: "d-ops",
+      categoryId: "c-fac", title: "Laptop too hot", description: "The laptop is getting very hot.", priority: "HIGH", handlingDepartmentId: "d-ops", channel: "CHAT",
     });
   });
 
@@ -207,7 +217,7 @@ describe("Submitting", () => {
     await draftIt();
     await userEvent.click(screen.getByRole("button", { name: "Submit request" }));
     expect(createMutate.mock.calls[0][0]).toEqual({
-      categoryId: "c-it", title: "Laptop overheating", description: "The laptop is getting very hot.", priority: "URGENT", handlingDepartmentId: "d-it",
+      categoryId: "c-it", title: "Laptop overheating", description: "The laptop is getting very hot.", priority: "URGENT", handlingDepartmentId: "d-it", channel: "CHAT",
     });
   });
 
@@ -286,5 +296,105 @@ describe("Keeping the draft", () => {
     await userEvent.keyboard("{Escape}");
     await open();
     expect((screen.getByLabelText("Your message") as HTMLTextAreaElement).value).toBe("half a thought");
+  });
+});
+
+
+const past = (over: Partial<RequestSummary>): RequestSummary =>
+  ({
+    id: "r-x", reference: "SR-1", title: "A request", priority: "MEDIUM", status: "SUBMITTED", channel: "CHAT",
+    createdAt: "2026-11-02T08:00:00.000Z", updatedAt: "2026-11-02T08:00:00.000Z",
+    category: { id: "c-it", code: "IT_EQUIPMENT", name: "IT Equipment" }, handlingDepartment: { id: "d-it", code: "ITOPS", name: "IT Operations" },
+    requester: { id: "u", fullName: "Nadia", country: "MALAYSIA" }, assignee: null, ...over,
+  }) as RequestSummary;
+
+describe("Earlier requests in the thread", () => {
+  it("shows each as a pair of bubbles, oldest first, newest nearest the message box", async () => {
+    // the API returns newest first
+    historyState.data = {
+      data: [
+        past({ id: "r-3", reference: "SR-1003", title: "Third, the newest", status: "IN_PROGRESS", priority: "HIGH" }),
+        past({ id: "r-2", reference: "SR-1002", title: "Second request" }),
+        past({ id: "r-1", reference: "SR-1001", title: "First, the oldest", status: "RESOLVED", handlingDepartment: { id: "d-hr", code: "PEOPLE", name: "People & Culture" } }),
+      ],
+    };
+    render(<ChatHead firstName="Nadia" />);
+    await open();
+    const section = screen.getByRole("region", { name: "Your earlier requests" });
+    const mine = [...section.querySelectorAll('[data-from="you"]')].map((n) => n.textContent);
+    expect(mine).toEqual(["First, the oldest", "Second request", "Third, the newest"]);
+    const replies = [...section.querySelectorAll('[data-from="assistant"]')].map((n) => n.textContent ?? "");
+    expect(replies[0]).toContain("SR-1001");
+    expect(replies[0]).toContain("was sent to People & Culture");
+    expect(replies[2]).toContain("SR-1003");
+  });
+
+  it("shows the live status and priority and links to the request", async () => {
+    historyState.data = { data: [past({ id: "r-9", reference: "SR-1009", status: "IN_PROGRESS", priority: "URGENT" })] };
+    render(<ChatHead firstName="Nadia" />);
+    await open();
+    const section = screen.getByRole("region", { name: "Your earlier requests" });
+    expect(within(section).getByRole("link", { name: "SR-1009" }).getAttribute("href")).toBe("/requests/r-9");
+    expect(within(section).getByText("In progress")).toBeTruthy();
+    expect(within(section).getByText("Urgent")).toBeTruthy();
+  });
+
+  it("starts the thread with the greeting, before the earlier requests", async () => {
+    historyState.data = { data: [past({ title: "Earlier" })] };
+    render(<ChatHead firstName="Nadia" />);
+    await open();
+    const log = screen.getByRole("log", { name: "Conversation" });
+    const bubbles = [...log.querySelectorAll("[data-from]")].map((n) => n.textContent ?? "");
+    expect(bubbles[0]).toContain("Hi Nadia, tell me what you need");
+    expect(bubbles[1]).toBe("Earlier");
+  });
+
+  it("loads the list only when the panel is open", async () => {
+    render(<ChatHead firstName="Nadia" />);
+    expect(historyEnabled).toHaveBeenLastCalledWith(false);
+    await open();
+    expect(historyEnabled).toHaveBeenLastCalledWith(true);
+  });
+
+  it("shows a placeholder while loading, a quiet message when it fails, and nothing extra when there are none", async () => {
+    historyState = { data: undefined, isPending: true, isError: false };
+    const first = render(<ChatHead firstName="Nadia" />);
+    await open();
+    expect(screen.getByLabelText("Loading your earlier requests")).toBeTruthy();
+    first.unmount();
+
+    historyState = { data: undefined, isPending: false, isError: true };
+    const second = render(<ChatHead firstName="Nadia" />);
+    await open();
+    expect(screen.getByText("Couldn't load your earlier requests.")).toBeTruthy();
+    // the rest of the chat still works
+    expect(screen.getByLabelText("Your message")).toBeTruthy();
+    second.unmount();
+
+    historyState = { data: { data: [] }, isPending: false, isError: false };
+    render(<ChatHead firstName="Nadia" />);
+    await open();
+    expect(screen.queryByRole("region", { name: "Your earlier requests" })).toBeNull();
+    expect(screen.getByText(/Hi Nadia/)).toBeTruthy();
+  });
+
+  it("puts the new draft after the earlier requests, and the message box stays at the bottom while composing", async () => {
+    historyState.data = { data: [past({ title: "Earlier one" })] };
+    render(<ChatHead firstName="Nadia" />);
+    await open();
+    expect(screen.getByLabelText("Your message")).toBeTruthy();
+    await write("my laptop is firing up");
+    await userEvent.click(screen.getByRole("button", { name: "Draft my request" }));
+    const log = screen.getByRole("log", { name: "Conversation" });
+    const order = [...log.querySelectorAll("[data-from]")].map((n) => n.textContent ?? "");
+    expect(order.findIndex((t) => t === "Earlier one")).toBeLessThan(order.findIndex((t) => t === "my laptop is firing up"));
+    expect(screen.queryByLabelText("Your message")).toBeNull(); // the draft replaces the composer
+  });
+
+  it("sends the request as a chat request so it joins the thread next time", async () => {
+    render(<ChatHead firstName="Nadia" />);
+    await draftIt();
+    await userEvent.click(screen.getByRole("button", { name: "Submit request" }));
+    expect(createMutate.mock.calls[0][0].channel).toBe("CHAT");
   });
 });

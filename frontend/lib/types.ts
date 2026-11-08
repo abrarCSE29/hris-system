@@ -66,6 +66,8 @@ export interface RequestSummary {
   title: string;
   priority: RequestPriority;
   status: RequestStatus;
+  /** How it was raised: with the form, or through the chat assistant. */
+  channel: "FORM" | "CHAT";
   createdAt: string;
   updatedAt: string;
   category: { id: string; code: string; name: string };

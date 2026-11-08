@@ -50,7 +50,8 @@ Open <http://localhost:3000> and sign in.
 ### The AI chat assistant (optional)
 
 An employee types one message in the chat button (bottom right) and the assistant fills in the request form for them to check and
-edit. It is a separate service, so the platform works without it (the button then points to the normal form).
+edit. The panel is a chat thread: above the message box it shows their earlier requests made through the assistant, as bubbles with the
+live status (it relies on `service_requests.channel`). It is a separate service, so the platform works without it (the button then points to the normal form).
 
 Prerequisites: [uv](https://docs.astral.sh/uv/) and a Google Gemini API key.
 

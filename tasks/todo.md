@@ -459,10 +459,11 @@ title on the right, the assistant's card on the left with reference link, depart
 current step; the message box stays at the bottom while composing. The list loads when the panel opens and is refreshed after Submit.
 The chat head sends `channel: "CHAT"` when submitting.
 **Acceptance criteria:**
-- [ ] Pairs in order (oldest first, newest at the bottom), live status badge, link to the request; loading, error and empty states; the greeting stays first
-- [ ] A just-submitted request appears in the thread; form requests do not; the draft behaviour from T27 is unchanged
+- [x] Pairs in order (oldest first, newest at the bottom), live status badge, link to the request; loading, error and empty states; the greeting stays first
+- [x] A just-submitted request appears (sent as a chat request, and the list refreshes after Submit) in the thread; form requests do not; the draft behaviour from T27 is unchanged
 **Verification:**
-- [ ] Component tests; `npx tsc --noEmit`; manual in the browser (not possible here)
+- [x] Component tests; `npx tsc --noEmit`
+- [ ] Manual in the browser (not possible here)
 **Dependencies:** T29, T27
 **Files:** `frontend/components/chat/{bubble,past-requests,chat-head}.tsx`, `frontend/lib/hooks/chat.ts`, `frontend/lib/hooks/requests.ts`, `frontend/lib/types.ts`, `frontend/tests/chat-*.test.tsx`
 **Scope:** M
