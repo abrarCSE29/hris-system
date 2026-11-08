@@ -434,9 +434,9 @@ the department), "AI suggested" badges, low-confidence note, reasoning line, Sub
 "debugging the AI service" runbook (the SQL queries developers use to read `chat_drafts`, taking a request id from a failed row, searching the service's logs for it, the stored detail).
 Update `docs/architecture-v2.md` or add a note that v2's chat slice is built as in the spec. Final by-hand run with the user's key.
 **Acceptance criteria:**
-- [ ] A fresh clone can run all three apps from the README; no secret committed; `ai-service/.env.example` complete
+- [x] The README explains setup of all three apps, the variables, and the debugging runbook (SQL queries, error codes); no secret committed; `ai-service/.env.example` complete
 **Verification:**
-- [ ] Walkthrough: laptop message to a submitted request; with the AI service stopped, a failed row appears in `chat_drafts` (read with the runbook's SQL)
+- [ ] (NOT DONE: needs Gemini quota and a restart of the dev servers) Walkthrough: laptop message to a submitted request; with the AI service stopped, a failed row appears in `chat_drafts` (read with the runbook's SQL)
 **Dependencies:** T27
 **Files:** `README.md`, `ai-service/.env.example`, `backend/.env.example`, `DEBUG_LOG.md`
 **Scope:** S
