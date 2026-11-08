@@ -115,11 +115,16 @@ Aggregates and cross-module insights, deployment, README, DEBUG_LOG.
   overridden). A 2px corner on the selected item was tried and removed at the user's request: there is no 2px radius.
 - **Use the stock shadcn components, not hand-built or plain-HTML equivalents** (set by the user): Select (not
   `<select>`), Table, Card, Field (label + control + hint + error), Input Group, Textarea, Badge variants only,
-  Progress, Chart, Sidebar. Our look comes only from the theme tokens in `globals.css`. Small wrappers are fine
+  Progress, Sidebar. **Charts are the exception, by request: ApexCharts** (`apexcharts` + `react-apexcharts`),
+  not the shadcn Chart/Recharts. Chart options live in `frontend/lib/charts.ts`; theme colours are resolved from CSS
+  variables at runtime because Apex cannot use `var(--x)`; Apex's own accessibility/keyboard focus is switched off
+  (the chart is hidden from assistive technology and a table beside it carries the data).
+  Charts have no custom hover effect: one that greyed out the other bars was built, then removed at the user's request.
+  Our look comes only from the theme tokens in `globals.css`. Small wrappers are fine
   when they just adapt a stock component: `SelectField` / `FilterSelect` (string values, "" = not chosen) and
   `PasswordInput` (Input Group + show/hide button).
 - **After any `npx shadcn@latest add`**: the CLI re-adds the unknown `cn` npm package, rewrites imports to it, and
-  can change pinned versions (it moved `recharts`). Re-point imports to `@/lib/utils`, `npm uninstall cn`, and re-check
+  can change pinned versions (it once moved `recharts`). Re-point imports to `@/lib/utils`, `npm uninstall cn`, and re-check
   `package.json`. Nothing in `components/ui` needs hand-editing for radius any more.
 - **The sign-in form sits in a card** (heading, description, error, fields and button all inside it). Password
   fields use `PasswordInput`, which has a show/hide button.

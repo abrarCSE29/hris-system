@@ -106,6 +106,37 @@ In each case the code was right and the expectation was wrong. Recorded because 
   Two things jsdom lacks (`ResizeObserver`, `matchMedia`) are stubbed in the tests.
 - **Still unverified:** how it looks and feels in a real browser.
 
+## 16. Red box around a chart when clicking it: **real bug (twice)**
+- **Seen (Recharts):** clicking a dashboard chart drew a red rectangle around the bars.
+- **Cause:** a keyboard-focus ring. Recharts 3's `accessibilityLayer` is on by default and makes the chart's SVG
+  focusable; our theme's red ring colour made it conspicuous. It was also an accessibility flaw: a focusable element
+  inside a container hidden from assistive technology.
+- **Fix:** `accessibilityLayer={false}`.
+- **Then the library was swapped for ApexCharts (requested).** The same trap was there: Apex makes its SVG focusable
+  (`tabindex="0"`) unless `chart.accessibility.enabled` is `false`. Set, and covered by a test.
+- **How it was found:** a first test passed for the wrong reason because the chart rendered nothing in jsdom (zero size).
+  The fix was to make the test render the chart for real (a fake `ResizeObserver` for Recharts; fake SVG measuring
+  functions for Apex) and assert it actually drew bars and labels *before* asserting nothing was focusable.
+- **Lesson:** a test that can't fail proves nothing. Make it fail first.
+
+## 17. Switching to ApexCharts: what had to be handled: **design notes**
+- Apex draws SVG colour *attributes*, which cannot hold `var(--chart-2)`. Colours are resolved from the page's CSS at
+  runtime (`resolveColor`), with the same hex values as the theme as a fallback, so the charts still follow the theme.
+- Apex touches `window`, so it is loaded client-only with `next/dynamic` (`ssr: false`) and a skeleton while loading.
+- Versions chosen were the newest at least two weeks old (`apexcharts` 8.5.0, `react-apexcharts` 2.1.1), not the latest.
+- `npm audit` lists 6 low/moderate findings, all through the `shadcn` CLI package's own dependencies (`deepmerge`,
+  `minimatch`), none from ApexCharts, and they pre-date this change.
+
+## 18. Hover focus on bars (built, then removed on request): I guessed the chart's structure wrong: **test caught it**
+- **Status:** removed at the user's request; kept here for the lesson.
+- **Goal:** hovering a bar keeps it in focus and greys out the others. ApexCharts only has series-level highlighting,
+  so this is done on the drawn SVG (bars carry their column in `j`; number labels in `data:dlJ`).
+- **What went wrong:** I first matched labels to columns by their position inside a group, assuming one group per
+  series. The real chart makes one group per *point*, so every label was greyed out except column 0.
+- **How it was found:** a test that renders the real library and hovers real bars. The fake-DOM unit tests I wrote
+  first had the same wrong assumption baked in and passed. **Lesson:** build the fixture from what the library
+  actually produces (probe it), not from what you expect it to produce.
+
 ---
 
 ## Not resolved / not verified

@@ -1,35 +1,54 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from "recharts";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { Skeleton } from "@/components/ui/skeleton";
+import { barChartOptions, FALLBACK_COLORS, readThemeColors, resolveColor, type BarSeries } from "@/lib/charts";
 import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
 
-export interface Series {
-  key: string;
-  label: string;
-  /** A CSS colour or token, e.g. "var(--chart-2)". Black / grey / red only. */
-  color: string;
-  /** Text colour for the value label drawn on the bar. */
-  labelColor: string;
-}
+// ApexCharts touches `window`, so it is loaded in the browser only.
+const Chart = dynamic(() => import("react-apexcharts"), { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> });
+
+export type Series = BarSeries;
 
 interface Props {
   title: string;
   description: string;
   data: ({ name: string } & Record<string, number | string>)[];
-  series: Series[];
+  series: BarSeries[];
   stacked?: boolean;
 }
 
 /**
- * A shadcn Chart (Recharts underneath) in a shadcn Card. The numbers are printed on the bars and a hidden table
- * mirrors them for screen readers, so the data never depends on colour or on seeing the chart.
+ * A bar chart (ApexCharts) in a shadcn Card. The numbers are printed on the bars and a hidden table mirrors them
+ * for screen readers, so the data never depends on colour or on seeing the chart; the chart itself is hidden from
+ * assistive technology.
  */
 export function BarCard({ title, description, data, series, stacked = false }: Props) {
   // Bars grow from the axis when the chart appears or its data changes, unless the user prefers less motion.
   const animate = !useReducedMotion();
-  const config: ChartConfig = Object.fromEntries(series.map((s) => [s.key, { label: s.label, color: s.color }]));
+
+  // Theme colours are read from the page's CSS once mounted (see lib/charts.ts for why).
+  const [theme, setTheme] = useState(FALLBACK_COLORS);
+  const [root, setRoot] = useState<Element>();
+  useEffect(() => {
+    setRoot(document.documentElement);
+    setTheme(readThemeColors(document.documentElement));
+  }, []);
+
+  const options = useMemo(
+    () =>
+      barChartOptions({
+        categories: data.map((d) => d.name),
+        series: series.map((s) => ({ label: s.label, color: resolveColor(s.color, root), labelColor: resolveColor(s.labelColor, root, "#ffffff") })),
+        stacked,
+        animate,
+        theme,
+      }),
+    [data, series, stacked, animate, theme, root],
+  );
+  const apexSeries = useMemo(() => series.map((s) => ({ name: s.label, data: data.map((d) => Number(d[s.key])) })), [data, series]);
 
   return (
     <Card>
@@ -40,37 +59,9 @@ export function BarCard({ title, description, data, series, stacked = false }: P
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={config} className="aspect-auto h-64 w-full" aria-hidden>
-          <BarChart data={data} margin={{ top: 16, right: 8, left: -16, bottom: 0 }}>
-            <CartesianGrid vertical={false} />
-            <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} />
-            <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-            <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-            {series.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
-            {series.map((s, i) => (
-              <Bar
-                key={s.key}
-                dataKey={s.key}
-                fill={`var(--color-${s.key})`}
-                stackId={stacked ? "total" : undefined}
-                radius={stacked ? 0 : [4, 4, 0, 0]}
-                maxBarSize={56}
-                isAnimationActive={animate}
-                animationDuration={900}
-                animationEasing="ease-out"
-                animationBegin={i * 200}
-              >
-                <LabelList
-                  dataKey={s.key}
-                  position={stacked ? "center" : "top"}
-                  fontSize={12}
-                  fill={stacked ? s.labelColor : "var(--foreground)"}
-                  formatter={(v: unknown) => (typeof v === "number" && v === 0 ? "" : (v as number))}
-                />
-              </Bar>
-            ))}
-          </BarChart>
-        </ChartContainer>
+        <div className="h-64 w-full" aria-hidden>
+          <Chart type="bar" height="100%" width="100%" series={apexSeries} options={options} />
+        </div>
 
         <table className="sr-only">
           <caption>{title}</caption>

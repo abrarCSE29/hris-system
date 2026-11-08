@@ -32,7 +32,7 @@ departments, roles, authentication and an HR Admin dashboard.
 
 | Component | Folder | Technology | Hosting | Responsibility |
 |---|---|---|---|---|
-| **Frontend** | `frontend/` | Next.js 16 (App Router), TypeScript, shadcn/ui, Tailwind CSS, TanStack Query, shadcn Charts | Vercel (project 1) | UI only. No database access, no secrets. Calls the backend through a same-origin `/api/*` rewrite. |
+| **Frontend** | `frontend/` | Next.js 16 (App Router), TypeScript, shadcn/ui, Tailwind CSS, TanStack Query, ApexCharts (`react-apexcharts`) | Vercel (project 1) | UI only. No database access, no secrets. Calls the backend through a same-origin `/api/*` rewrite. |
 | **Backend** | `backend/` | Next.js 16 **API-only** (Route Handlers), TypeScript, Prisma, zod, `jose` (JWT), bcrypt | Vercel (project 2) | Auth, access control, all reads and writes, state transitions, dashboard aggregates, schema, migrations and seed script. |
 | **Database** | — | PostgreSQL on Supabase (via the Supabase connection pooler) | Supabase | Single source of data. Used as plain PostgreSQL. |
 
