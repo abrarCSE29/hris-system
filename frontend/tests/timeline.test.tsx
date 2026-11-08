@@ -64,6 +64,21 @@ describe("Timeline", () => {
     expect(dots.at(-1)).toContain("bg-primary"); // still the red current step
   });
 
+  it("calls it a reassignment whenever work had already been assigned, including after it was started", () => {
+    render(
+      <Timeline
+        events={[
+          ev("1", null, "SUBMITTED"),
+          ev("2", "SUBMITTED", "ASSIGNED", { assignee: { id: "w", fullName: "Jun Hao Teoh" } }),
+          ev("3", "ASSIGNED", "IN_PROGRESS"),
+          ev("4", "IN_PROGRESS", "ASSIGNED", { assignee: { id: "x", fullName: "Daniel Nair" }, note: "Jun Hao is on leave" }),
+        ]}
+      />,
+    );
+    const titles = screen.getAllByRole("listitem").map((li) => li.querySelector(".font-semibold")?.textContent);
+    expect(titles).toEqual(["Submitted", "Assigned to Jun Hao Teoh", "In Progress", "Reassigned to Daniel Nair"]);
+  });
+
   it("handles a single step", () => {
     const { container } = render(<Timeline events={[ev("1", null, "SUBMITTED")]} />);
     expect(container.querySelectorAll("[data-slot=timeline-line]")).toHaveLength(0);
