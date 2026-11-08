@@ -7,6 +7,7 @@ export type ErrorCode =
   | "INVALID_TRANSITION"
   | "CONFLICT"
   | "VALIDATION_FAILED"
+  | "AI_UNAVAILABLE"
   | "INTERNAL";
 
 const STATUS: Record<ErrorCode, number> = {
@@ -16,6 +17,7 @@ const STATUS: Record<ErrorCode, number> = {
   INVALID_TRANSITION: 409,
   CONFLICT: 409,
   VALIDATION_FAILED: 422,
+  AI_UNAVAILABLE: 503,
   INTERNAL: 500,
 };
 

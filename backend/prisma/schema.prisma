@@ -34,6 +34,27 @@ enum RequestCategoryCode {
   OTHER
 }
 
+/// How a chat draft ended, for people reading the record: it worked, the model's answer was unusable, it timed out, or the
+/// AI service could not be used at all.
+enum ChatDraftOutcome {
+  OK
+  INVALID_OUTPUT
+  TIMEOUT
+  UNAVAILABLE
+}
+
+/// Machine-readable cause of a failed chat draft, for counting and alerting later.
+enum AiErrorCode {
+  AI_UNREACHABLE
+  AI_TIMEOUT
+  AI_AUTH
+  AI_RATE_LIMITED
+  AI_MODEL_ERROR
+  AI_INVALID_OUTPUT
+  AI_REJECTED_BY_BACKEND
+  AI_BAD_RESPONSE
+}
+
 enum RequestPriority {
   LOW
   MEDIUM
@@ -79,6 +100,7 @@ model Department {
   serviceRequests   ServiceRequest[]
   templateTasks     TemplateTask[]
   onboardingTasks   OnboardingTask[]
+  chatDrafts        ChatDraft[]       @relation("ChatDraftDepartment")
 
   @@index([headId])
   @@map("departments")
@@ -105,6 +127,7 @@ model User {
 
   headOf              Department[]         @relation("DepartmentHead")
   submittedRequests   ServiceRequest[]     @relation("Requester")
+  chatDrafts          ChatDraft[]
   assignedRequests    ServiceRequest[]     @relation("RequestAssignee")
   requestEvents       RequestEvent[]
   requestComments     RequestComment[]
@@ -129,6 +152,7 @@ model RequestCategory {
 
   handlingDepartment Department       @relation(fields: [handlingDepartmentId], references: [id])
   requests           ServiceRequest[]
+  chatDrafts         ChatDraft[]
 
   @@map("request_categories")
 }
@@ -273,4 +297,41 @@ model OnboardingTask {
   @@index([instanceId, sortOrder])
   @@index([dependsOnId])
   @@map("onboarding_tasks")
+}
+
+/// One row per call to POST /requests/chat-draft, written by the backend for every outcome. For developers: who asked, from
+/// where, how it went and, on failure, why. NEVER the message text (only its length).
+model ChatDraft {
+  id            String           @id @default(uuid()) @db.Uuid
+  userId        String           @map("user_id") @db.Uuid
+  /// The page the chat head was opened on, for example /requests.
+  page          String
+  ip            String?
+  userAgent     String?          @map("user_agent")
+  /// Sent to the AI service as X-Request-Id; search its logs for it.
+  requestId     String           @unique @map("request_id") @db.Uuid
+  outcome       ChatDraftOutcome
+  errorCode     AiErrorCode?     @map("error_code")
+  /// The cause in a few words. No personal data, no message text.
+  error         String?
+  /// The AI service's redacted traceback, or the backend's own detail. Never message text.
+  errorDetail   String?          @map("error_detail")
+  attempts      Int?
+  model         String?
+  latencyMs     Int?             @map("latency_ms")
+  categoryId    String?          @map("category_id") @db.Uuid
+  departmentId  String?          @map("department_id") @db.Uuid
+  priority      RequestPriority?
+  confidence    Decimal?         @db.Decimal(3, 2)
+  lowConfidence Boolean          @default(false) @map("low_confidence")
+  messageChars  Int              @map("message_chars")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  user       User             @relation(fields: [userId], references: [id])
+  category   RequestCategory? @relation(fields: [categoryId], references: [id])
+  department Department?      @relation("ChatDraftDepartment", fields: [departmentId], references: [id])
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("chat_drafts")
 }

@@ -400,11 +400,11 @@ outcome, `error_code`, `error`, redacted `error_detail`, `attempts`, model, late
 A failure to write the row never fails the draft.
 **Note:** the categories table has no `description` column, and the AI needs one. Keep the descriptions in a backend constant (same text as `ai-service/eval/categories.py`) rather than adding a column.
 **Acceptance criteria:**
-- [ ] Success returns ids and values; `401`, `422` (empty, too long, extra field, a `userId` in the body); `503` for unreachable, timeout, auth, rate limit, bad shape, invalid output, rejected codes
-- [ ] A row exists for each of those outcomes with the right `error_code`; `error_detail` never contains the message
-- [ ] No request is created by `chat-draft`
+- [x] Success returns ids and values; `401`, `422` (empty, too long, extra field, a `userId` in the body); `503` for unreachable, timeout, auth, rate limit, bad shape, invalid output, rejected codes
+- [x] A row exists for each of those outcomes with the right `error_code`; `error_detail` never contains the message
+- [x] No request is created by `chat-draft`
 **Verification:**
-- [ ] Vitest with the AI client mocked; migration reviewed; table and indexes asserted
+- [x] Vitest with the AI client mocked; migration reviewed; table and indexes asserted
 **Dependencies:** T24 (contract), T25
 **Files:** `backend/prisma/schema.prisma`, `backend/prisma/migrations/*`, `backend/src/lib/ai-client.ts`, `backend/src/services/intake.ts`, `backend/app/api/v1/requests/chat-draft/route.ts`, `backend/tests/chat-draft.test.ts`
 **Scope:** M
