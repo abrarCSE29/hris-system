@@ -108,6 +108,8 @@ Aggregates and cross-module insights, deployment, README, DEBUG_LOG.
   `headOfDepartmentId` is now derived from the user's role and department, not from `departments.head_id`. That
   column stays as the department's listed head (shown on the Departments page, default manager for new hires) and
   grants nothing. A Manager still works only in their own department; HR Admin keeps seeing everything.
+  The seed has exactly one Manager per department (7 in all); the former extra managers are now Employees reporting to
+  their department's Manager. Existing databases keep their old data until re-seeded.
 
 ## Frontend design rule (set by the user)
 

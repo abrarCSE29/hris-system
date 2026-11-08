@@ -20,8 +20,8 @@ describe("base seed", () => {
     expect(await group("country")).toEqual({ BANGLADESH: 40, MALAYSIA: 25, SRI_LANKA: 20, CYPRUS: 15 });
   });
 
-  it("has 3 HR admins, 12 managers and 85 employees", async () => {
-    expect(await group("role")).toEqual({ HR_ADMIN: 3, MANAGER: 12, EMPLOYEE: 85 });
+  it("has 3 HR admins, 7 managers (one per department) and 90 employees", async () => {
+    expect(await group("role")).toEqual({ HR_ADMIN: 3, MANAGER: 7, EMPLOYEE: 90 });
   });
 
   it("has ~10 on probation and 4 on notice, the rest active", async () => {
@@ -33,6 +33,15 @@ describe("base seed", () => {
     for (const d of depts) {
       expect(d.head?.role).toBe("MANAGER");
       expect(d.head?.departmentId).toBe(d.id);
+    }
+  });
+
+  it("has exactly one Manager per department, and that Manager is the listed head", async () => {
+    const depts = await db.department.findMany();
+    expect(depts).toHaveLength(7);
+    for (const d of depts) {
+      const managers = await db.user.findMany({ where: { departmentId: d.id, role: "MANAGER" } });
+      expect(managers.map((u) => u.id)).toEqual([d.headId]);
     }
   });
 

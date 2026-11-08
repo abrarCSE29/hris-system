@@ -48,7 +48,7 @@ const dateDaysAgo = (days: number) => {
 };
 
 /**
- * Seed part 1 (spec §7): departments with heads, 100 users, request categories.
+ * Seed part 1 (spec §7): departments with exactly one Manager each (who heads it), 100 users, request categories.
  * Assumes empty tables. Later parts (requests, onboarding) build on the returned references.
  */
 export async function seedBase(db: PrismaClient, passwordHash: string) {
@@ -83,7 +83,6 @@ export async function seedBase(db: PrismaClient, passwordHash: string) {
   // ── plan every person ──
   const planned: Planned[] = [];
   const headOf = new Map<string, Planned>();
-  const managersOf = new Map<string, Planned[]>(); // heads + extra managers per department
   let slot = 0;
   const add = (deptCode: string, role: Role, title: string, joinedDaysAgo: number, managerId: string | null) => {
     const country = slots[slot++];
@@ -95,13 +94,8 @@ export async function seedBase(db: PrismaClient, passwordHash: string) {
   for (const d of DEPARTMENTS) {
     const head = add(d.code, "MANAGER", d.headTitle, int(1200, 3000), null);
     headOf.set(d.code, head);
-    managersOf.set(d.code, [head]);
-    for (let i = 0; i < d.managers; i++) managersOf.get(d.code)!.push(add(d.code, "MANAGER", d.managerTitle, int(800, 2500), head.id));
     for (let i = 0; i < d.hrAdmins; i++) add(d.code, "HR_ADMIN", i === 0 ? "HR Operations Lead" : "HR Administrator", int(600, 2500), head.id);
-    for (let i = 0; i < d.employees; i++) {
-      const mgrs = managersOf.get(d.code)!;
-      add(d.code, "EMPLOYEE", pick(d.employeeTitles), int(100, 2200), mgrs[i % mgrs.length].id);
-    }
+    for (let i = 0; i < d.employees; i++) add(d.code, "EMPLOYEE", pick(d.employeeTitles), int(100, 2200), head.id);
   }
 
   // ── statuses ──

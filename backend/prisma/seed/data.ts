@@ -34,24 +34,21 @@ export interface DepartmentPlan {
   code: string;
   name: string;
   headTitle: string;
-  managerTitle: string;
-  /** Extra (non-head) managers. */
-  managers: number;
   /** HR Admins live in People & Culture only. */
   hrAdmins: number;
   employees: number;
   employeeTitles: string[];
 }
 
-// Totals: 100 people, 12 managers (7 heads + 5), 3 HR admins, 85 employees.
+// Totals: 100 people, 7 managers (exactly one per department, who heads it), 3 HR admins, 90 employees.
 export const DEPARTMENTS: DepartmentPlan[] = [
-  { code: "ENG", name: "Engineering", headTitle: "Head of Engineering", managerTitle: "Engineering Manager", managers: 2, hrAdmins: 0, employees: 27, employeeTitles: ["Software Engineer", "Senior Software Engineer", "Frontend Engineer", "Backend Engineer", "QA Engineer", "DevOps Engineer", "Data Engineer"] },
-  { code: "ITOPS", name: "IT Operations", headTitle: "Head of IT Operations", managerTitle: "IT Operations Manager", managers: 0, hrAdmins: 0, employees: 11, employeeTitles: ["IT Support Specialist", "Systems Administrator", "Network Engineer", "Security Analyst"] },
-  { code: "PEOPLE", name: "People & Culture", headTitle: "Head of People & Culture", managerTitle: "People Manager", managers: 0, hrAdmins: 3, employees: 6, employeeTitles: ["HR Business Partner", "Recruiter", "Payroll Specialist", "Learning & Development Specialist"] },
-  { code: "FIN", name: "Finance", headTitle: "Head of Finance", managerTitle: "Finance Manager", managers: 1, hrAdmins: 0, employees: 8, employeeTitles: ["Accountant", "Financial Analyst", "Accounts Payable Officer", "Treasury Analyst"] },
-  { code: "MKT", name: "Marketing", headTitle: "Head of Marketing", managerTitle: "Marketing Manager", managers: 1, hrAdmins: 0, employees: 12, employeeTitles: ["Digital Marketing Specialist", "Content Strategist", "Brand Designer", "SEO Analyst"] },
-  { code: "LEGAL", name: "Legal & Compliance", headTitle: "Head of Legal & Compliance", managerTitle: "Compliance Manager", managers: 0, hrAdmins: 0, employees: 5, employeeTitles: ["Legal Counsel", "Compliance Officer", "Contracts Specialist"] },
-  { code: "OPS", name: "Operations", headTitle: "Head of Operations", managerTitle: "Operations Manager", managers: 1, hrAdmins: 0, employees: 16, employeeTitles: ["Operations Coordinator", "Facilities Officer", "Office Administrator", "Procurement Officer"] },
+  { code: "ENG", name: "Engineering", headTitle: "Head of Engineering", hrAdmins: 0, employees: 29, employeeTitles: ["Software Engineer", "Senior Software Engineer", "Frontend Engineer", "Backend Engineer", "QA Engineer", "DevOps Engineer", "Data Engineer"] },
+  { code: "ITOPS", name: "IT Operations", headTitle: "Head of IT Operations", hrAdmins: 0, employees: 11, employeeTitles: ["IT Support Specialist", "Systems Administrator", "Network Engineer", "Security Analyst"] },
+  { code: "PEOPLE", name: "People & Culture", headTitle: "Head of People & Culture", hrAdmins: 3, employees: 6, employeeTitles: ["HR Business Partner", "Recruiter", "Payroll Specialist", "Learning & Development Specialist"] },
+  { code: "FIN", name: "Finance", headTitle: "Head of Finance", hrAdmins: 0, employees: 9, employeeTitles: ["Accountant", "Financial Analyst", "Accounts Payable Officer", "Treasury Analyst"] },
+  { code: "MKT", name: "Marketing", headTitle: "Head of Marketing", hrAdmins: 0, employees: 13, employeeTitles: ["Digital Marketing Specialist", "Content Strategist", "Brand Designer", "SEO Analyst"] },
+  { code: "LEGAL", name: "Legal & Compliance", headTitle: "Head of Legal & Compliance", hrAdmins: 0, employees: 5, employeeTitles: ["Legal Counsel", "Compliance Officer", "Contracts Specialist"] },
+  { code: "OPS", name: "Operations", headTitle: "Head of Operations", hrAdmins: 0, employees: 17, employeeTitles: ["Operations Coordinator", "Facilities Officer", "Office Administrator", "Procurement Officer"] },
 ];
 
 // Request categories and the department that handles each (spec §3.3).

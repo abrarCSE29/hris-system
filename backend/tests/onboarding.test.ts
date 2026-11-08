@@ -44,7 +44,7 @@ beforeAll(async () => {
   peopleMember = (await db.user.findFirstOrThrow({ where: { departmentId: people.id, role: "EMPLOYEE" } })).id;
   // A Manager who has nothing to do with the hire, IT tasks or People tasks.
   otherManager = (await db.user.findFirstOrThrow({ where: { role: "MANAGER", department: { code: { notIn: ["ENG", "ITOPS", "PEOPLE"] } } } })).id;
-  engOutsider = (await db.user.findFirstOrThrow({ where: { departmentId: eng.id, role: "EMPLOYEE", managerId: { not: ids.personas.manager }, id: { not: ids.personas.newHire } } })).id;
+  engOutsider = (await db.user.findFirstOrThrow({ where: { departmentId: eng.id, role: "EMPLOYEE", id: { not: ids.personas.newHire } } })).id;
 
   const task = (key: string, over: object) => ({ key, title: key, description: "", ownerType: "DEPARTMENT", offsetDays: 0, deadlineLabel: "Day 1", ...over });
   const res = await send(postTemplate, ids.personas.hrAdmin, {

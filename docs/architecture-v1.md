@@ -597,7 +597,7 @@ day the seed runs, so overdue and in-progress scenarios stay realistic.
 | Data | Contents |
 |---|---|
 | Departments | 7, each with a head |
-| Employees | 100: Bangladesh 40, Malaysia 25, Sri Lanka 20, Cyprus 15. Names from country-appropriate lists, realistic job titles. 3 HR Admins, ~12 Managers, the rest Employees. Mostly Active, ~10 On Probation (incl. all new hires), ~4 On Notice. |
+| Employees | 100: Bangladesh 40, Malaysia 25, Sri Lanka 20, Cyprus 15. Names from country-appropriate lists, realistic job titles. 3 HR Admins, 7 Managers (exactly one per department, who heads it), the rest Employees. Mostly Active, ~10 On Probation (incl. all new hires), ~4 On Notice. |
 | Service requests | 35 across all 5 categories, 5 statuses and 4 priorities, with realistic titles and descriptions. History rows match each request's status. At least 6 requests with 2–4 comments. Several from new hires. |
 | Templates | "Standard Onboarding" (10 tasks) and "Engineering Onboarding" (12 tasks), with dependency chains such as *Create accounts → Provision laptop → Grant repository access*. |
 | New hires | 7, joined 10–55 days ago across all four countries, with Completed, In Progress and Not Started tasks, at least 3 overdue and at least 2 blocked. |
