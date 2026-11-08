@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiClientError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useAddComment } from "@/lib/hooks/requests";
 import type { RequestComment } from "@/lib/types";
@@ -14,7 +12,6 @@ import type { RequestComment } from "@/lib/types";
 export function Comments({ requestId, comments }: { requestId: string; comments: RequestComment[] }) {
   const add = useAddComment(requestId);
   const [body, setBody] = useState("");
-  const error = add.error instanceof ApiClientError ? add.error.message : add.error ? "Couldn't post your comment." : null;
 
   return (
     <section aria-labelledby="comments-heading" className="space-y-4">
@@ -51,11 +48,6 @@ export function Comments({ requestId, comments }: { requestId: string; comments:
         }}
       >
         <FieldGroup>
-          {error && (
-            <Alert variant="destructive" role="alert">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
           <Field>
             <FieldLabel htmlFor="comment">Add a comment</FieldLabel>
             <Textarea id="comment" rows={3} maxLength={5000} value={body} onChange={(e) => setBody(e.target.value)} />

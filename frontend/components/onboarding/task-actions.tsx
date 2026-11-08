@@ -1,8 +1,6 @@
 "use client";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ApiClientError } from "@/lib/api";
 import { useTaskTransition } from "@/lib/hooks/onboarding";
 import type { TaskAction } from "@/lib/types";
 
@@ -10,7 +8,6 @@ import type { TaskAction } from "@/lib/types";
 export function TaskActions({ taskId, actions }: { taskId: string; actions: TaskAction[] }) {
   const transition = useTaskTransition();
   if (actions.length === 0) return null;
-  const error = transition.error instanceof ApiClientError ? transition.error.message : transition.error ? "Something went wrong." : null;
   const run = (action: TaskAction) => transition.mutate({ taskId, action });
 
   return (
@@ -27,11 +24,6 @@ export function TaskActions({ taskId, actions }: { taskId: string; actions: Task
           </Button>
         )}
       </div>
-      {error && (
-        <Alert variant="destructive" role="alert">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
     </div>
   );
 }

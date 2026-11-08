@@ -5,12 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EmployeePicker } from "@/components/people/employee-picker";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { SelectField } from "@/components/select-field";
-import { ApiClientError } from "@/lib/api";
 import { useAssignChecklist, useTemplates } from "@/lib/hooks/onboarding";
 import type { User } from "@/lib/types";
 
@@ -21,9 +19,6 @@ export default function AssignChecklistPage() {
   const [employee, setEmployee] = useState<User | null>(null);
   const [templateId, setTemplateId] = useState("");
   const [startDate, setStartDate] = useState("");
-
-  const err = assign.error instanceof ApiClientError ? assign.error : null;
-  const message = assign.error ? (err?.message ?? "Something went wrong. Please try again.") : null;
 
   return (
     <div className="max-w-xl space-y-6">
@@ -46,12 +41,6 @@ export default function AssignChecklistPage() {
         }}
       >
         <FieldGroup>
-          {message && (
-            <Alert variant="destructive" role="alert">
-              <AlertDescription>{message}</AlertDescription>
-            </Alert>
-          )}
-
           <Field>
             <FieldLabel>Employee</FieldLabel>
             <EmployeePicker selected={employee} onSelect={setEmployee} />

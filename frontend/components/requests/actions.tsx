@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { SelectField } from "@/components/select-field";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiClientError } from "@/lib/api";
 import { useTransition } from "@/lib/hooks/requests";
 import { useAssignable } from "@/lib/hooks/users";
 import type { RequestAction, RequestDetail } from "@/lib/types";
@@ -40,7 +38,6 @@ export function RequestActions({ request }: { request: RequestDetail }) {
       },
     );
 
-  const error = transition.error instanceof ApiClientError ? transition.error.message : transition.error ? "Something went wrong." : null;
   const reassign = request.status === "ASSIGNED";
 
   return (
@@ -68,12 +65,6 @@ export function RequestActions({ request }: { request: RequestDetail }) {
           </Button>
         )}
       </div>
-
-      {error && (
-        <Alert variant="destructive" role="alert">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
 
       {open === "assign" && (
         <form

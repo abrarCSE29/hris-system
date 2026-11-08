@@ -77,7 +77,8 @@ export function TemplateForm({ initial, submitLabel, pendingLabel, cancelHref, p
   const apiError = error instanceof ApiClientError ? error : null;
   const details = Array.isArray(apiError?.details) ? (apiError.details as { path: string; message: string }[]) : [];
   const rowError = (i: number) => details.filter((d) => d.path.startsWith(`tasks.${i}.`)).map((d) => d.message);
-  const general = error && details.length === 0 ? (apiError?.message ?? "Something went wrong.") : details.find((d) => !d.path.startsWith("tasks."))?.message;
+  // Failures without field details are announced as a toast; field-level ones are shown here, beside the form.
+  const general = details.find((d) => !d.path.startsWith("tasks."))?.message;
 
   const complete = name.trim() && rows.length > 0 && rows.every((r) => r.title.trim() && r.owner);
 

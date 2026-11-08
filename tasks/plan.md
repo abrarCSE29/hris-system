@@ -139,7 +139,14 @@ Aggregates and cross-module insights, deployment, README, DEBUG_LOG.
 - **After any `npx shadcn@latest add`**: the CLI re-adds the unknown `cn` npm package, rewrites imports to it, and
   can change pinned versions (it once moved `recharts`). Re-point imports to `@/lib/utils`, `npm uninstall cn`, and re-check
   `package.json`. Nothing in `components/ui` needs hand-editing for radius any more.
-- **The sign-in form sits in a card** (heading, description, error, fields and button all inside it). Password
+- **Notifications are toasts (set by the user): the shadcn Sonner `Toaster`** (`components/ui/sonner.tsx`, mounted once in
+  `components/providers.tsx`, top right, always light). Every action's outcome is announced there: a mutation's success
+  text is its `meta.success` (in `lib/hooks/*`) and a failure shows the server's message, handled in one place by the
+  query client's `MutationCache`. Field-level errors stay beside their fields (a toast then just says to check them); the
+  sign-in form shows no error in its card: every sign-in failure is a toast (wrong credentials get their own wording via
+  `meta.failure`); page-load failures stay on the page with a Retry. The generated
+  Sonner file was edited to drop `next-themes` (the app has one theme).
+- **The sign-in form sits in a card** (heading, description, fields and button all inside it; errors are toasts). Password
   fields use `PasswordInput`, which has a show/hide button.
 - All colours come from the tokens in `frontend/app/globals.css`. Do not hard-code colours in components.
 - Known trade-off: white on `#ed1c3e` is about 4.3:1 contrast, just under WCAG AA (4.5:1) for small

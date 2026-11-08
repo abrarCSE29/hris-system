@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, ApiClientError } from "@/lib/api";
 import type { MeResponse, User } from "@/lib/types";
 
 export const ME_KEY = ["me"] as const;
@@ -15,6 +15,9 @@ export function useLogin() {
   return useMutation({
     mutationFn: (creds: { email: string; password: string }) =>
       api<{ user: User }>("/auth/login", { method: "POST", body: creds }),
+    // Every sign-in failure is a toast; the form itself shows no error. A 401 here means wrong credentials, not an
+    // expired session, so it gets its own wording.
+    meta: { failure: (e: unknown) => (e instanceof ApiClientError && e.status === 401 ? "Incorrect email or password." : undefined) },
     onSuccess: () => qc.invalidateQueries({ queryKey: ME_KEY }),
   });
 }

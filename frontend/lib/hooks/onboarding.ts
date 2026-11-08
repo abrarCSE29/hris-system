@@ -40,6 +40,10 @@ export function useTaskTransition() {
   return useMutation({
     mutationFn: ({ taskId, action }: { taskId: string; action: TaskAction }) =>
       api<{ instanceStatus: "ACTIVE" | "COMPLETED" }>(`/onboarding/tasks/${taskId}/transitions`, { method: "POST", body: { action } }),
+    meta: {
+      success: (v: { action: TaskAction }, r: { instanceStatus: "ACTIVE" | "COMPLETED" }) =>
+        v.action === "start" ? "Task started" : r.instanceStatus === "COMPLETED" ? "Task completed. The onboarding checklist is finished" : "Task completed",
+    },
     // Completing a task can unblock others and finish the checklist, so refresh everything onboarding-related.
     onSettled: () => {
       qc.invalidateQueries({ queryKey: [KEY] });
@@ -75,6 +79,7 @@ export function useCreateTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: TemplateInput) => api<TemplateDetail>("/onboarding/templates", { method: "POST", body }),
+    meta: { success: "Template created" },
     onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, "templates"] }),
   });
 }
@@ -83,6 +88,7 @@ export function useUpdateTemplate(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: TemplateInput) => api<TemplateDetail>(`/onboarding/templates/${id}`, { method: "PUT", body }),
+    meta: { success: "Template saved" },
     onSuccess: (t) => {
       qc.setQueryData([KEY, "template", id], t);
       qc.invalidateQueries({ queryKey: [KEY, "templates"] });
@@ -95,6 +101,7 @@ export function useAssignChecklist() {
   return useMutation({
     mutationFn: (body: { employeeId: string; templateId: string; startDate?: string }) =>
       api<InstanceDetail>("/onboarding/instances", { method: "POST", body }),
+    meta: { success: "Onboarding checklist assigned" },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [KEY] });
       qc.invalidateQueries({ queryKey: ["me"] });
@@ -120,6 +127,7 @@ export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: NewUserInput) => api<CreatedUser>("/users", { method: "POST", body }),
+    meta: { success: "New hire added" },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["users"] });
       qc.invalidateQueries({ queryKey: [KEY] });

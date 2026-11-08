@@ -39,11 +39,19 @@ describe("Sign-in page", () => {
     expect(document.querySelectorAll("form")).toHaveLength(1);
   });
 
-  it("shows an error inside the card too", () => {
-    loginState = { isPending: false, error: new ApiClientError(401, "UNAUTHORIZED", "Invalid email or password") };
-    render(<LoginPage />);
-    const alert = within(card()).getByRole("alert");
-    expect(alert.textContent).toBe("Incorrect email or password.");
+  it("shows no error in the card for any failure: they are toasts", () => {
+    for (const error of [
+      new ApiClientError(401, "UNAUTHORIZED", "Invalid email or password"),
+      new ApiClientError(422, "VALIDATION_FAILED", "Enter a valid email"),
+      new ApiClientError(500, "INTERNAL", "Internal server error"),
+      new TypeError("Failed to fetch"),
+    ]) {
+      loginState = { isPending: false, error };
+      const { unmount } = render(<LoginPage />);
+      expect(within(card()).queryByRole("alert")).toBeNull();
+      expect(card().textContent).not.toMatch(/Incorrect|Invalid|valid email|Internal|wrong/i);
+      unmount();
+    }
   });
 
   it("offers a show/hide control that reveals the typed password", async () => {

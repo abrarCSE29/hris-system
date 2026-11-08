@@ -2,13 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
-import { ApiClientError } from "@/lib/api";
 import { useLogin, useMe } from "@/lib/hooks/auth";
 import { homeForRole } from "@/lib/nav";
 
@@ -23,15 +21,6 @@ export default function LoginPage() {
   useEffect(() => {
     if (me.data) router.replace(homeForRole(me.data.user.role));
   }, [me.data, router]);
-
-  const error =
-    login.error instanceof ApiClientError
-      ? login.error.status === 401
-        ? "Incorrect email or password."
-        : login.error.message
-      : login.error
-        ? "Something went wrong. Please try again."
-        : null;
 
   return (
     <main className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
@@ -63,11 +52,6 @@ export default function LoginPage() {
               }}
             >
               <FieldGroup>
-                {error && (
-                  <Alert variant="destructive" role="alert">
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
                 <Field>
                   <FieldLabel htmlFor="email">Email</FieldLabel>
                   <Input id="email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />

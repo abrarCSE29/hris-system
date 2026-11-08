@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SelectField } from "@/components/select-field";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -32,7 +31,6 @@ export default function NewRequestPage() {
   const fieldErrors = new Map<string, string>(
     Array.isArray(apiError?.details) ? (apiError.details as { path: string; message: string }[]).map((d) => [d.path, d.message]) : [],
   );
-  const generalError = create.error && fieldErrors.size === 0 ? (apiError?.message ?? "Something went wrong. Please try again.") : null;
   const errorFor = (path: string) => (fieldErrors.has(path) ? <FieldError>{fieldErrors.get(path)}</FieldError> : null);
 
   return (
@@ -55,12 +53,6 @@ export default function NewRequestPage() {
         }}
       >
         <FieldGroup>
-          {generalError && (
-            <Alert variant="destructive" role="alert">
-              <AlertDescription>{generalError}</AlertDescription>
-            </Alert>
-          )}
-
           <Field data-invalid={fieldErrors.has("categoryId") || undefined}>
             <FieldLabel htmlFor="category">Category</FieldLabel>
             <SelectField

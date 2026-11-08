@@ -39,7 +39,6 @@ export default function NewPersonPage() {
   const err = create.error instanceof ApiClientError ? create.error : null;
   const details = Array.isArray(err?.details) ? (err.details as { path: string; message: string }[]) : [];
   const fieldError = (p: string) => details.find((d) => d.path === p)?.message;
-  const general = create.error && details.length === 0 ? (err?.message ?? "Something went wrong. Please try again.") : null;
 
   const ready = form.fullName.trim() && form.email.trim() && form.country && form.departmentId && form.managerId && form.jobTitle.trim() && form.joiningDate;
 
@@ -115,11 +114,6 @@ export default function NewPersonPage() {
         }}
       >
         <FieldGroup>
-          {general && (
-            <Alert variant="destructive" role="alert">
-              <AlertDescription>{general}</AlertDescription>
-            </Alert>
-          )}
           {input("fullName", "Full name", { required: true, maxLength: 120 })}
           <div>
             {input("email", "Work email", { type: "email", required: true, autoComplete: "off" })}
