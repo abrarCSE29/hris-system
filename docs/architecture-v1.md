@@ -441,7 +441,7 @@ All paths below are relative to `/api/v1`.
 | GET | `/onboarding/instances/:id` | Hire (own), M (direct report), H | — | checklist with all tasks and calculated status |
 | GET | `/onboarding/me` | Any | — | own checklist, or `null` |
 | GET | `/onboarding/tasks` | Any (tasks the user owns) | `?status&overdue` | task queue across all new hires |
-| POST | `/onboarding/tasks/:id/transitions` | Task owner, H | `{ action: "start" \| "complete" }` | updated task; `409` if blocked |
+| POST | `/onboarding/tasks/:id/transitions` | Task owner | `{ action: "start" \| "complete" }` | updated task; `409` if blocked |
 
 ### 4.6 Dashboard
 
@@ -478,7 +478,7 @@ Employee in IT Operations can be assigned IT requests and complete IT onboarding
 | Comment | On any request they can view | On any request they can view | ✅ |
 | View own checklist | ✅ | ✅ | ✅ |
 | Onboarding task queue | Own department's tasks | + `MANAGER` tasks for direct reports | All |
-| Start / complete task | If member of owning department | Same + own `MANAGER` tasks | ✅ |
+| Start / complete task | If member of owning department | Same + own `MANAGER` tasks | Only tasks they own (their own department's); no override |
 | Onboarding progress | ❌ | Direct reports | All |
 | Templates, new hires, assign checklist | ❌ | ❌ | ✅ |
 | Dashboard | ❌ | ❌ | ✅ |
@@ -560,11 +560,13 @@ stateDiagram-v2
 
 | From | Action | To | Who | Rule |
 |---|---|---|---|---|
-| Not Started | `start` | In Progress | Task owner; HR Admin | Not allowed while blocked (`409`) |
-| Not Started / In Progress | `complete` | Completed | Task owner; HR Admin | Not allowed while blocked (`409`) |
+| Not Started | `start` | In Progress | Task owner | Not allowed while blocked (`409`) |
+| Not Started / In Progress | `complete` | Completed | Task owner | Not allowed while blocked (`409`) |
 | Blocked | — | — | — | No actions; the UI shows which task it is waiting for |
 
-**Task owner** = a member of the owning department, or the assigned manager for `MANAGER` tasks.
+**Task owner** = a member of the owning department, or the assigned manager for `MANAGER` tasks. HR Admin has no
+override: they can see every task and checklist but start or complete only the tasks they own (an HR Admin who
+works in the owning department is a member of it). This matches service requests, where only the assignee acts.
 Each task has at most one dependency, and chains (A → B → C) are allowed. The blocked check is
 repeated inside the transaction. When the last task is completed, the instance becomes `COMPLETED`.
 

@@ -34,7 +34,7 @@ export default function TaskQueuePage() {
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Task queue</h1>
         <p className="text-sm text-muted-foreground">
-          {isHr ? "Onboarding tasks across all new hires." : "Onboarding tasks that belong to your team, or to you as a manager."} Open tasks are shown unless you pick a status.
+          {isHr ? "Onboarding tasks across all new hires. You can act only on the ones your own team owns." : "Onboarding tasks that belong to your team, or to you as a manager."} Open tasks are shown unless you pick a status.
         </p>
       </header>
 

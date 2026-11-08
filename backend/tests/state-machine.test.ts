@@ -209,8 +209,9 @@ describe("onboarding task state machine", () => {
 
   // Oracle written as plain tables.
   const STATE_OK: Record<TaskAction, OnboardingTaskStatus[]> = { start: ["NOT_STARTED"], complete: ["NOT_STARTED", "IN_PROGRESS"] };
-  const DEPT_OWNERS: Who[] = ["itMember", "hr", "theHire"]; // theHire happens to be in IT: department membership is what counts
-  const MANAGER_OWNERS: Who[] = ["hiresManager", "hr"];
+  // No HR override: HR is in People & Culture here, so they own People tasks but not IT or manager tasks.
+  const DEPT_OWNERS: Who[] = ["itMember", "theHire"]; // theHire happens to be in IT: department membership is what counts
+  const MANAGER_OWNERS: Who[] = ["hiresManager"];
   const TARGET: Record<TaskAction, OnboardingTaskStatus> = { start: "IN_PROGRESS", complete: "COMPLETED" };
 
   for (const [label, make, owners] of [["department task", deptTask, DEPT_OWNERS], ["manager task", managerTask, MANAGER_OWNERS]] as const) {
@@ -262,6 +263,20 @@ describe("onboarding task state machine", () => {
     expect(isTaskOwner(deptTask("NOT_STARTED"), TASK_ACTORS.hiresManager)).toBe(false);
     expect(isTaskOwner(managerTask("NOT_STARTED"), TASK_ACTORS.hiresManager)).toBe(true);
     expect(isTaskOwner(managerTask("NOT_STARTED"), TASK_ACTORS.otherManager)).toBe(false);
-    expect(isTaskOwner(managerTask("NOT_STARTED"), TASK_ACTORS.hr)).toBe(true);
+    // HR Admin has no override on tasks they don't own…
+    expect(isTaskOwner(managerTask("NOT_STARTED"), TASK_ACTORS.hr)).toBe(false);
+    expect(isTaskOwner(deptTask("NOT_STARTED"), TASK_ACTORS.hr)).toBe(false);
+  });
+
+  it("…but an HR Admin owns the tasks of the department they work in, like anyone else there", () => {
+    const peopleTask: TaskState = { status: "NOT_STARTED", blocked: false, ownerType: "DEPARTMENT", ownerDepartmentId: PEOPLE, assigneeId: null };
+    expect(isTaskOwner(peopleTask, TASK_ACTORS.hr)).toBe(true);
+    expect(allowedTaskActions(peopleTask, TASK_ACTORS.hr)).toEqual(["start", "complete"]);
+    expect(allowedTaskActions(peopleTask, TASK_ACTORS.itMember)).toEqual([]);
+  });
+
+  it("an HR Admin who is the assigned manager owns that manager task", () => {
+    const task: TaskState = { ...managerTask("NOT_STARTED"), assigneeId: TASK_ACTORS.hr.id };
+    expect(isTaskOwner(task, TASK_ACTORS.hr)).toBe(true);
   });
 });

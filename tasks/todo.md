@@ -214,7 +214,7 @@ assigned to hire's manager, dependencies remapped); `POST /users` accepts `templ
 (start/complete), blocked check repeated inside the transaction, auto-complete instance on last task,
 onboarding task state machine + tests.
 **Acceptance criteria:**
-- [x] Owner = member of owning department or assigned manager; HR may act on any; others 403/404
+- [x] Owner = member of owning department or assigned manager; no HR override (changed on request); non-owners who can see the task get 409, strangers 404
 - [x] Start/complete while blocked → 409; completing unblocks dependents
 - [x] Last task completed → instance COMPLETED; double-complete → 409
 **Verification:**

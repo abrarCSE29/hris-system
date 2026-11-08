@@ -98,6 +98,11 @@ Aggregates and cross-module insights, deployment, README, DEBUG_LOG.
 - **New-hire status (added on request):** `POST /users` takes an optional `status` (`ACTIVE` or
   `ON_PROBATION`, default `ON_PROBATION`). Nothing changes it afterwards (editing users is out of scope).
 
+- **No HR override on onboarding tasks (changed on request):** only a task's owner (member of the owning department,
+  or the hire's manager for manager tasks) can start or complete it, same as service requests. HR Admin still sees
+  every task and checklist. An HR Admin in the owning department (People & Culture) owns that department's tasks.
+  Starting a task still records no actor; completing records `completedBy`.
+
 ## Frontend design rule (set by the user)
 
 - **Palette is black, white and red only**, following nextventures.io. Red `#ed1c3e` (`--brand-red`)

@@ -364,12 +364,46 @@ describe("POST /onboarding/tasks/:id/transitions", () => {
     expect((await db.onboardingTask.findUniqueOrThrow({ where: { id: t } })).status).toBe("NOT_STARTED");
   });
 
-  it("lets HR act on any task, but not around a blocked dependency", async () => {
+  it("gives HR Admin no override: 409 on tasks they don't own, but they can act on their own department's", async () => {
+    const { body } = await assign();
+    const hr = ids.personas.hrAdmin; // works in People & Culture
+    const before = async () => (await db.onboardingTask.findMany({ where: { instanceId: body.id }, orderBy: { sortOrder: "asc" } })).map((t) => t.status);
+    const initial = await before();
+
+    // Not theirs: an IT task, a manager task, and a blocked IT task.
+    for (const title of ["Create accounts", "Welcome chat", "Grant repo access"]) {
+      for (const action of ["start", "complete"]) {
+        const res = await act(hr, await taskIdByTitle(body.id, title), action);
+        expect(res.status, `${title}/${action}`).toBe(409);
+        expect((await json(res)).error.message).toMatch(/not allowed/);
+      }
+    }
+    expect(await before()).toEqual(initial); // nothing changed
+
+    // Theirs: the People task.
+    expect((await act(hr, await taskIdByTitle(body.id, "HR paperwork"), "complete")).status).toBe(200);
+  });
+
+  it("still lets HR Admin see every task, but only offers actions on the ones they own", async () => {
     const { body } = await assign();
     const hr = ids.personas.hrAdmin;
-    expect((await act(hr, await taskIdByTitle(body.id, "Welcome chat"), "complete")).status).toBe(200);
-    expect((await act(hr, await taskIdByTitle(body.id, "Grant repo access"), "complete")).status).toBe(409);
-    expect((await act(hr, await taskIdByTitle(body.id, "Create accounts"), "complete")).status).toBe(200);
+    const q = await json(await send(listTasksRoute, hr, { url: "http://x/api/v1/onboarding/tasks" }));
+    expect(q.total).toBe(5); // full visibility
+    const offered = Object.fromEntries(q.data.map((t: any) => [t.title, t.allowedActions]));
+    expect(offered["HR paperwork"]).toEqual(["start", "complete"]);
+    for (const title of ["Create accounts", "Provision laptop", "Grant repo access", "Welcome chat"]) expect(offered[title], title).toEqual([]);
+    // …and the checklist detail agrees.
+    const detail = await json(await send(getInstance, hr, { id: body.id }));
+    expect(detail.tasks.filter((t: any) => t.allowedActions.length > 0).map((t: any) => t.title)).toEqual(["HR paperwork"]);
+  });
+
+  it("does not let HR Admin finish a checklist on someone else's behalf", async () => {
+    const { body } = await assign();
+    await db.onboardingTask.updateMany({ where: { instanceId: body.id, title: { not: "Welcome chat" } }, data: { status: "COMPLETED" } });
+    expect((await act(ids.personas.hrAdmin, await taskIdByTitle(body.id, "Welcome chat"), "complete")).status).toBe(409);
+    expect((await db.onboardingInstance.findUniqueOrThrow({ where: { id: body.id } })).status).toBe("ACTIVE");
+    expect((await act(ids.personas.manager, await taskIdByTitle(body.id, "Welcome chat"), "complete")).status).toBe(200);
+    expect((await db.onboardingInstance.findUniqueOrThrow({ where: { id: body.id } })).status).toBe("COMPLETED");
   });
 
   it("refuses to repeat a transition", async () => {

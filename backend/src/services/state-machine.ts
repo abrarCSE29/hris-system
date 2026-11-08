@@ -118,9 +118,12 @@ export interface TaskState {
   assigneeId: string | null;
 }
 
-/** Task owner = a member of the owning department, or the assigned manager for MANAGER tasks. HR Admin may act on any task. */
+/**
+ * Task owner = a member of the owning department, or the assigned manager for MANAGER tasks. There is no HR Admin
+ * override: HR can see every task but only acts on the ones they own, the same as service requests. (An HR Admin
+ * who works in the owning department is a member of it, so is the owner of that department's tasks.)
+ */
 export function isTaskOwner(task: Pick<TaskState, "ownerType" | "ownerDepartmentId" | "assigneeId">, actor: TaskActor): boolean {
-  if (actor.role === "HR_ADMIN") return true;
   if (task.ownerType === "DEPARTMENT") return task.ownerDepartmentId !== null && task.ownerDepartmentId === actor.departmentId;
   return task.assigneeId === actor.id;
 }
