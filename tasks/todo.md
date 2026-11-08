@@ -421,9 +421,10 @@ after 3 s), the draft card with every field editable (title, description, catego
 the department), "AI suggested" badges, low-confidence note, reasoning line, Submit (existing mutation, passes
 `handlingDepartmentId`), Start over, AI-down fallback with a link to `/requests/new`. Sends the current page path. Draft kept in memory when the sheet closes.
 **Acceptance criteria:**
-- [ ] Every field editable; the submitted request has exactly the values shown; toasts for success and failure; not shown on the login page
+- [x] Every field editable; the submitted request has exactly the values shown; toasts for success and failure; not shown on the login page
 **Verification:**
-- [ ] Component tests; `npx tsc --noEmit`; manual in the browser with the real service
+- [x] Component tests; `npx tsc --noEmit`
+- [ ] Manual in the browser with the real service (not done: no browser available here, and the Gemini quota is used up)
 **Dependencies:** T25, T26
 **Files:** `frontend/components/chat/*`, `frontend/lib/hooks/chat.ts`, `frontend/app/(app)/layout.tsx`, `frontend/tests/chat-*.test.tsx`
 **Scope:** M

@@ -17,6 +17,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { ChatHead } from "@/components/chat/chat-head";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLogout, useMe } from "@/lib/hooks/auth";
 import { activeHref, navForRole } from "@/lib/nav";
@@ -106,6 +107,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
         <main className="min-w-0 p-4 md:p-8">{children}</main>
       </SidebarInset>
+      <ChatHead firstName={user.fullName.split(" ")[0]} />
     </SidebarProvider>
   );
 }

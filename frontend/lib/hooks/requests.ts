@@ -41,7 +41,7 @@ const REQUEST_ACTION_DONE: Record<RequestAction, string> = {
 export function useCreateRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { categoryId: string; title: string; description: string; priority: RequestPriority }) =>
+    mutationFn: (body: { categoryId: string; title: string; description: string; priority: RequestPriority; handlingDepartmentId?: string }) =>
       api<RequestSummary>("/requests", { method: "POST", body }),
     meta: { success: (_v: never, r: RequestSummary) => `Request ${r.reference} submitted` },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["requests"] }),

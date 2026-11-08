@@ -14,6 +14,9 @@ vi.mock("@/lib/hooks/auth", () => ({
   useLogout: () => ({ mutate: logout }),
 }));
 
+// The assistant has its own tests; here it only needs to be present.
+vi.mock("@/components/chat/chat-head", () => ({ ChatHead: ({ firstName }: { firstName: string }) => <button>assistant for {firstName}</button> }));
+
 import AppLayout from "@/app/(app)/layout";
 
 beforeAll(() => {
@@ -34,6 +37,21 @@ const asUser = (role: Role, isNewHire = false): MeResponse => ({
 const links = () => within(screen.getByRole("list", { name: "Main" })).getAllByRole("link").map((a) => a.textContent);
 
 describe("app shell (shadcn Sidebar)", () => {
+  it("shows the request assistant to every signed-in role, greeting them by first name", () => {
+    for (const role of ["EMPLOYEE", "MANAGER", "HR_ADMIN"] as const) {
+      me = asUser(role);
+      const { unmount } = render(<AppLayout>x</AppLayout>);
+      expect(screen.getByRole("button", { name: "assistant for Ana" })).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it("does not show it while the person is not yet loaded (so never on a signed-out page)", () => {
+    me = undefined;
+    render(<AppLayout>x</AppLayout>);
+    expect(screen.queryByRole("button", { name: /assistant/ })).toBeNull();
+  });
+
   it("shows an HR Admin every management page", () => {
     me = asUser("HR_ADMIN");
     render(<AppLayout><p>page body</p></AppLayout>);
