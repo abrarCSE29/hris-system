@@ -451,6 +451,23 @@ All paths below are relative to `/api/v1`.
 
 The last two fields are the cross-module insights.
 
+### 4.7 Department breakdown *(added after v1 sign-off)*
+
+An HR Admin view of how the workforce is spread across departments.
+
+| Method | Path | Auth | Response |
+|---|---|---|---|
+| GET | `/departments/breakdown` | H | `{ total, departments: [{ id, code, name, head: { id, fullName } \| null, headcount, byCountry: [{ country, count }], byStatus: [{ status, count }], byRole: [{ role, count }] }] }` |
+
+- Counts every person in the department, whatever their status (same basis as the dashboard headcount).
+  `total` is the sum of the department headcounts and equals the dashboard's total headcount.
+- Departments are sorted by headcount (largest first), then name. A department with nobody still appears, with zeros.
+- Every `byCountry`, `byStatus` and `byRole` list carries all values (zero included) in a fixed order, so the UI
+  needs no gap-filling.
+- Page: **Departments** (`/departments`, HR Admin only, in the sidebar). One row per department with the head,
+  headcount and its share of the company, and the split by country, status and role. Selecting a department opens
+  **People** filtered to it (`/people?departmentId=…`). Managers and Employees get `403` from the API and no nav item.
+
 ---
 
 ## 5. Access Control

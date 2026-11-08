@@ -309,3 +309,31 @@ README (setup, env, logins, architecture link, migration-review rule), DEBUG_LOG
 - [~] Acceptance criteria met except deployment; tests pass (backend 578, frontend 21)
 - [~] §9 "Not in v1" items absent from code, except template editing and starting status, added on request
 - [ ] Ready for review
+
+## Phase 5 — Department breakdown (added on request, spec §4.7)
+
+### Task 21: Department breakdown API
+**Description:** `GET /departments/breakdown` (HR only): per department the head, headcount and the split by country,
+status and role.
+**Acceptance criteria:**
+- [x] Counts match independent SQL; `total` equals the dashboard headcount
+- [x] Empty departments appear with zeros; every list carries all enum values in a fixed order
+- [x] Non-HR → 403, no cookie → 401
+**Verification:**
+- [x] Vitest against the seed and a fixture with an empty department
+**Dependencies:** T18
+**Files:** `backend/app/api/v1/departments/breakdown/route.ts`, `backend/src/services/departments.ts`, `backend/tests/departments.test.ts`
+**Scope:** S
+
+### Task 22: Departments page
+**Description:** HR-only `/departments` page: one row per department (head, headcount, share, country/status/role split),
+linking to People filtered by that department. Nav item for HR Admin only.
+**Acceptance criteria:**
+- [x] Loading, error, 403 states; numbers readable without colour
+- [x] Selecting a department opens `/people?departmentId=…` with the filter applied
+- [x] Nav item shown to HR Admin only
+**Verification:**
+- [~] Component tests and API over HTTP as HR (200) and manager (403) done; not seen in a browser, `next build` not run (dev server is running)
+**Dependencies:** T21
+**Files:** `frontend/app/(app)/departments/page.tsx`, `frontend/lib/hooks/departments.ts`, `frontend/lib/nav.ts`, `frontend/app/(app)/people/page.tsx`
+**Scope:** M

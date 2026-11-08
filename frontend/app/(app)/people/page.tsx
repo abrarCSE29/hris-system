@@ -2,7 +2,8 @@
 
 import { Search, UserPlus } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { FilterSelect } from "@/components/filter-select";
 import { Pagination } from "@/components/pagination";
 import { StatusBadge } from "@/components/people/status-badge";
@@ -19,14 +20,24 @@ import { useMeta, useUsers } from "@/lib/hooks/users";
 
 const PAGE_SIZE = 20;
 
+// useSearchParams needs a Suspense boundary so the rest of the page can still be prerendered.
 export default function PeoplePage() {
+  return (
+    <Suspense>
+      <People />
+    </Suspense>
+  );
+}
+
+function People() {
   const me = useMe();
   const meta = useMeta();
   const isHr = me.data?.user.role === "HR_ADMIN";
 
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
+  // The Departments page links here with ?departmentId=…, which starts the department filter.
+  const [departmentId, setDepartmentId] = useState(useSearchParams().get("departmentId") ?? "");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounced(search.trim());

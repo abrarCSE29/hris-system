@@ -37,7 +37,7 @@ describe("app shell (shadcn Sidebar)", () => {
   it("shows an HR Admin every management page", () => {
     me = asUser("HR_ADMIN");
     render(<AppLayout><p>page body</p></AppLayout>);
-    expect(links()).toEqual(["Dashboard", "Requests", "People", "Onboarding", "Task queue", "Templates"]);
+    expect(links()).toEqual(["Dashboard", "Requests", "People", "Departments", "Onboarding", "Task queue", "Templates"]);
     expect(screen.getByText("page body")).toBeTruthy();
   });
 
