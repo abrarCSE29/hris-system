@@ -1,0 +1,25 @@
+[project]
+name = "hris-ai-service"
+version = "0.1.0"
+description = "Private AI service for the HRIS platform: drafts service requests from a chat message."
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["error::DeprecationWarning:app.*"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
