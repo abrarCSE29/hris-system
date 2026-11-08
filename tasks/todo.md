@@ -127,7 +127,7 @@ event row in same transaction; out-of-scope → 404.
 change + event row in one transaction; 409 on invalid.
 **Acceptance criteria:**
 - [x] Full lifecycle Submitted→Assigned→In Progress→Resolved→Closed works for the right actors
-- [x] Reassign allowed from Assigned; wrong actor/state → 409 (or 404 if out of scope)
+- [x] Reassign allowed from Assigned and from In Progress (back to Assigned, to a different person); wrong actor/state → 409 (or 404 if out of scope)
 - [x] DB CHECK (assignee required unless SUBMITTED) never triggered by the API
 **Verification:**
 - [x] Vitest integration test of the lifecycle and each rejection

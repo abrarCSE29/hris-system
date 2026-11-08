@@ -38,7 +38,8 @@ export function RequestActions({ request }: { request: RequestDetail }) {
       },
     );
 
-  const reassign = request.status === "ASSIGNED";
+  // Already assigned (or in progress): this is a reassignment, not a first assignment.
+  const reassign = request.status === "ASSIGNED" || request.status === "IN_PROGRESS";
 
   return (
     <Card aria-label="Actions">
@@ -82,7 +83,7 @@ export function RequestActions({ request }: { request: RequestDetail }) {
                 value={assigneeId}
                 onValueChange={setAssigneeId}
                 placeholder={assignable.isPending ? "Loading…" : "Choose a person…"}
-                options={(assignable.data?.data ?? []).map((u) => ({ value: u.id, label: `${u.fullName} · ${u.jobTitle}` }))}
+                options={(assignable.data?.data ?? []).filter((u) => request.status !== "IN_PROGRESS" || u.id !== request.assignee?.id).map((u) => ({ value: u.id, label: `${u.fullName} · ${u.jobTitle}` }))}
               />
             </Field>
             <Field>

@@ -549,6 +549,7 @@ stateDiagram-v2
     [*] --> Submitted: submit (any user)
     Submitted --> Assigned: assign (Manager of the handling department / HR Admin)
     Assigned --> Assigned: reassign (Manager of the handling department / HR Admin)
+    InProgress --> Assigned: reassign (Manager of the handling department / HR Admin)
     Assigned --> InProgress: start (assignee only)
     InProgress --> Resolved: resolve (assignee only)
     Resolved --> Closed: close (requester / HR Admin)
@@ -558,7 +559,7 @@ stateDiagram-v2
 | From | Action | To | Who | Notes |
 |---|---|---|---|---|
 | — | `submit` | Submitted | Any user | Routed to the category's handling department |
-| Submitted / Assigned | `assign` | Assigned | Manager of the handling department; HR Admin | Assignee must be an active member of the handling department |
+| Submitted / Assigned / In Progress | `assign` | Assigned | Manager of the handling department; HR Admin | Assignee must be an active member of the handling department. Reassigning a request that is **In Progress** sends it back to Assigned, so the new assignee starts it; it must go to someone other than the current assignee (`422`) |
 | Assigned | `start` | In Progress | Assignee only | |
 | In Progress | `resolve` | Resolved | Assignee only | Optional note |
 | Resolved | `close` | Closed | Requester; HR Admin | Final state |

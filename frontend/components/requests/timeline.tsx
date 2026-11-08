@@ -6,7 +6,7 @@ function describe(e: RequestEvent): string {
     case "SUBMITTED":
       return "Submitted";
     case "ASSIGNED":
-      return e.fromStatus === "ASSIGNED" ? `Reassigned to ${e.assignee?.fullName ?? "someone"}` : `Assigned to ${e.assignee?.fullName ?? "someone"}`;
+      return e.fromStatus !== "SUBMITTED" ? `Reassigned to ${e.assignee?.fullName ?? "someone"}` : `Assigned to ${e.assignee?.fullName ?? "someone"}`;
     default:
       return labelize(e.toStatus, { title: true });
   }

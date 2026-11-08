@@ -58,7 +58,7 @@ variable when seeding.
 | `manager@hris.test` | Manager (Engineering) | "My team", direct reports' requests and onboarding, their manager tasks in the Task queue. Also heads Engineering: sees and assigns Engineering's request queue. |
 | `new.hire@hris.test` | Employee, currently onboarding | "My onboarding" checklist with blocked and overdue tasks; their own requests |
 | `it.support@hris.test` | Employee in IT Operations | Requests assigned to them (start/resolve); IT onboarding tasks in the Task queue |
-| `farid.tan@hris.test` | Manager (IT Operations) | IT's whole request queue, with Assign / Reassign |
+| `farid.tan@hris.test` | Manager (IT Operations) | IT's whole request queue, with Assign / Reassign (also while the work is in progress) |
 
 Every Manager is the head of their own department; there is no separate head role. Managers are listed on the People page (API: `GET /users?role=MANAGER`).
 

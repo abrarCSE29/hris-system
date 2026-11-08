@@ -33,7 +33,7 @@ const goodAssignee: AssigneeCandidate = { id: "new-assignee", departmentId: DEPT
 
 // ── Independent oracle: spec §6.1 written as two plain tables ─────────────────
 const STATES_ALLOWING: Record<RequestAction, RequestStatus[]> = {
-  assign: ["SUBMITTED", "ASSIGNED"],
+  assign: ["SUBMITTED", "ASSIGNED", "IN_PROGRESS"],
   start: ["ASSIGNED"],
   resolve: ["IN_PROGRESS"],
   close: ["RESOLVED"],
@@ -47,6 +47,30 @@ const ACTORS_ALLOWED: Record<RequestAction, ActorName[]> = {
 const TARGET: Record<RequestAction, RequestStatus> = {
   assign: "ASSIGNED", start: "IN_PROGRESS", resolve: "RESOLVED", close: "CLOSED",
 };
+
+describe("reassigning a request that is in progress", () => {
+  const inProgress = (over: Partial<RequestState> = {}) => request("IN_PROGRESS", { assigneeId: "assignee", ...over });
+
+  it("sends it back to Assigned with the new assignee, so they start it themselves", () => {
+    expect(checkTransition("assign", inProgress(), ACTORS.head, goodAssignee)).toEqual({ ok: true, from: "IN_PROGRESS", to: "ASSIGNED", assigneeId: "new-assignee" });
+    expect(checkTransition("assign", inProgress(), ACTORS.hr, goodAssignee)).toMatchObject({ ok: true, to: "ASSIGNED" });
+  });
+
+  it("is not for the assignee, the requester or another department's head", () => {
+    for (const who of ["assignee", "requester", "otherHead", "stranger"] as const) {
+      expect(checkTransition("assign", inProgress(), ACTORS[who], goodAssignee)).toMatchObject({ ok: false, reason: "not_permitted" });
+    }
+  });
+
+  it("must go to a different person, an active member of the handling department", () => {
+    const samePerson = { ...goodAssignee, id: "assignee" };
+    expect(checkTransition("assign", inProgress(), ACTORS.head, samePerson)).toMatchObject({ ok: false, reason: "invalid_assignee" });
+    expect(checkTransition("assign", inProgress(), ACTORS.head, { ...goodAssignee, departmentId: OTHER_DEPT })).toMatchObject({ ok: false, reason: "invalid_assignee" });
+    expect(checkTransition("assign", inProgress(), ACTORS.head, { ...goodAssignee, status: "ON_NOTICE" })).toMatchObject({ ok: false, reason: "invalid_assignee" });
+    // Reassigning an ASSIGNED request to the same person is still harmless and allowed.
+    expect(checkTransition("assign", request("ASSIGNED", { assigneeId: "assignee" }), ACTORS.head, { ...goodAssignee, id: "assignee" })).toMatchObject({ ok: true });
+  });
+});
 
 describe("checkTransition: full action × status × actor matrix", () => {
   for (const action of ACTIONS) {
@@ -150,7 +174,10 @@ describe("allowedActions", () => {
     ["ASSIGNED", "hr", ["assign"]],
     ["ASSIGNED", "requester", []],
     ["IN_PROGRESS", "assignee", ["resolve"]],
-    ["IN_PROGRESS", "head", []],
+    ["IN_PROGRESS", "head", ["assign"]],
+    ["IN_PROGRESS", "hr", ["assign"]],
+    ["IN_PROGRESS", "otherHead", []],
+    ["IN_PROGRESS", "requester", []],
     ["RESOLVED", "requester", ["close"]],
     ["RESOLVED", "hr", ["close"]],
     ["RESOLVED", "assignee", []],

@@ -37,9 +37,11 @@ interface Rule {
 const isHr = (a: Actor) => a.role === "HR_ADMIN";
 
 export const REQUEST_TRANSITIONS: Record<RequestAction, Rule> = {
-  // Head of the handling department, or HR Admin. Also used to reassign.
+  // Manager of the handling department, or HR Admin. Also used to reassign, including a request that is already in
+  // progress (the person working on it may be unavailable or the wrong fit). A reassigned request goes back to
+  // Assigned: the new assignee starts it themselves.
   assign: {
-    from: ["SUBMITTED", "ASSIGNED"],
+    from: ["SUBMITTED", "ASSIGNED", "IN_PROGRESS"],
     to: "ASSIGNED",
     who: (req, a) => isHr(a) || (a.headOfDepartmentId !== null && a.headOfDepartmentId === req.handlingDepartmentId),
   },
@@ -81,6 +83,10 @@ export function checkTransition(
         reason: "invalid_assignee",
         message: "Assignee must be an active member of the handling department",
       };
+    }
+    // Handing work that is already under way to the person doing it would only throw away its In Progress status.
+    if (req.status === "IN_PROGRESS" && assignee.id === req.assigneeId) {
+      return { ok: false, reason: "invalid_assignee", message: "That person is already working on this request" };
     }
     return { ok: true, from: req.status, to: rule.to, assigneeId: assignee.id };
   }

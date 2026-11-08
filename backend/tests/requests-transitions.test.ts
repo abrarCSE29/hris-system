@@ -91,13 +91,6 @@ describe("full lifecycle", () => {
     expect(await json(res)).toMatchObject({ status: "ASSIGNED", assignee: { id: itWorker2 } });
     expect(await eventCount()).toBe(3);
   });
-
-  it("does not allow reassigning once work has started", async () => {
-    await act(itHead, "assign", { assigneeId: itWorker });
-    await act(itWorker, "start");
-    expect((await act(itHead, "assign", { assigneeId: itWorker2 })).status).toBe(409);
-    expect((await db.serviceRequest.findUniqueOrThrow({ where: { id: requestId } })).assigneeId).toBe(itWorker);
-  });
 });
 
 describe("rejections write nothing", () => {
@@ -158,6 +151,57 @@ describe("rejections write nothing", () => {
   it("explains the 409 with the standard error code", async () => {
     const body = await json(await act(itHead, "start"));
     expect(body.error.code).toBe("INVALID_TRANSITION");
+  });
+});
+
+describe("reassigning a request that is in progress", () => {
+  const started = async () => {
+    await act(itHead, "assign", { assigneeId: itWorker });
+    await act(itWorker, "start");
+  };
+
+  it("lets the department's Manager hand it to someone else; it returns to Assigned and the new person starts it", async () => {
+    await started();
+    expect(await statusOf()).toBe("IN_PROGRESS");
+
+    const res = await act(itHead, "assign", { assigneeId: itWorker2, note: "Moving to Daniel, Jun Hao is on leave" });
+    const body = await json(res);
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ status: "ASSIGNED", assignee: { id: itWorker2 } });
+    const last = body.events.at(-1);
+    expect(last).toMatchObject({ fromStatus: "IN_PROGRESS", toStatus: "ASSIGNED", assignee: { id: itWorker2 }, note: "Moving to Daniel, Jun Hao is on leave" });
+
+    // The previous assignee can no longer see or act on it (it is not theirs any more); the new one can.
+    expect((await act(itWorker, "resolve")).status).toBe(404);
+    expect((await act(itWorker2, "start")).status).toBe(200);
+    expect(await statusOf()).toBe("IN_PROGRESS");
+  });
+
+  it("lets HR Admin do it too, but not the assignee, the requester or an unrelated person", async () => {
+    await started();
+    for (const who of [itWorker, ids.personas.newHire, engMember]) {
+      const res = await act(who, "assign", { assigneeId: itWorker2 });
+      expect([403, 404, 409]).toContain(res.status);
+      expect(await statusOf()).toBe("IN_PROGRESS");
+    }
+    expect((await act(ids.personas.hrAdmin, "assign", { assigneeId: itWorker2 })).status).toBe(200);
+    expect(await statusOf()).toBe("ASSIGNED");
+  });
+
+  it("rejects handing it to the person already working on it, or to someone outside the department", async () => {
+    await started();
+    expect((await act(itHead, "assign", { assigneeId: itWorker })).status).toBe(422);
+    expect((await act(itHead, "assign", { assigneeId: engMember })).status).toBe(422);
+    expect((await act(itHead, "assign", { assigneeId: onNotice })).status).toBe(422);
+    expect(await statusOf()).toBe("IN_PROGRESS");
+  });
+
+  it("is still not possible once the request is resolved or closed", async () => {
+    await started();
+    await act(itWorker, "resolve");
+    expect((await act(itHead, "assign", { assigneeId: itWorker2 })).status).toBe(409);
+    await act(ids.personas.newHire, "close");
+    expect((await act(itHead, "assign", { assigneeId: itWorker2 })).status).toBe(409);
   });
 });
 
