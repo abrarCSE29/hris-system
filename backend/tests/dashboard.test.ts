@@ -22,6 +22,9 @@ async function seedAll() {
 beforeAll(seedAll);
 afterAll(() => db.$disconnect());
 
+/** The "waiting on IT Operations" entry of the summary. */
+const onIt = (s: Awaited<ReturnType<typeof getDashboardSummary>>) => s.newHiresWaiting.find((w) => w.department.code === "ITOPS")!;
+
 /** Independent SQL, written without reusing any application code, to cross-check the service. */
 const sql = async <T>(query: string, ...params: unknown[]) => (await db.$queryRawUnsafe(query, ...params)) as T[];
 const num = (x: unknown) => Number(x);
@@ -42,7 +45,7 @@ describe("GET /dashboard/summary (route)", () => {
     const body = (await res.json()) as any;
     expect(res.status).toBe(200);
     expect(Object.keys(body).sort()).toEqual([
-      "asOf", "completionRateByCountry", "headcountByCountry", "newHiresWithOpenItRequests", "onboarding", "requestsByCategory", "requestsByStatus",
+      "asOf", "completionRateByCountry", "headcountByCountry", "newHiresWaiting", "onboarding", "requestsByCategory", "requestsByStatus",
     ]);
     expect(body.asOf).toBe(todayInDhaka());
     expect(Object.keys(body.onboarding).sort()).toEqual(["activeHires", "blockedTasks", "overdueTasks"]);
@@ -123,14 +126,47 @@ describe("summary values match independent SQL (seeded data)", () => {
        JOIN departments d ON d.id = r.handling_department_id
        WHERE i.status = 'ACTIVE' AND d.code = 'ITOPS' AND r.status IN ('SUBMITTED','ASSIGNED','IN_PROGRESS')`);
     const expectedHires = new Set(rows.map((r) => r.employee));
-    expect(s.newHiresWithOpenItRequests.count).toBe(expectedHires.size);
-    expect(s.newHiresWithOpenItRequests.hires.map((h) => h.id).sort()).toEqual([...expectedHires].sort());
-    expect(s.newHiresWithOpenItRequests.hires.flatMap((h) => h.openRequests.map((r) => r.reference)).sort()).toEqual(rows.map((r) => r.ref).sort());
-    expect(s.newHiresWithOpenItRequests.count).toBeGreaterThanOrEqual(2); // seeded to demonstrate the insight
-    for (const h of s.newHiresWithOpenItRequests.hires) {
+    expect(onIt(s).count).toBe(expectedHires.size);
+    expect(onIt(s).hires.map((h) => h.id).sort()).toEqual([...expectedHires].sort());
+    expect(onIt(s).hires.flatMap((h) => h.openRequests.map((r) => r.reference)).sort()).toEqual(rows.map((r) => r.ref).sort());
+    expect(onIt(s).count).toBeGreaterThanOrEqual(2); // seeded to demonstrate the insight
+    for (const h of onIt(s).hires) {
       expect(h.instanceId).toBeTruthy();
       expect(h.openRequests.length).toBeGreaterThan(0);
+      const [row] = await sql<{ department_id: string; name: string }>(
+        `SELECT d.id AS department_id, d.name FROM users u JOIN departments d ON d.id = u.department_id WHERE u.id = $1::uuid`, h.id);
+      expect(h.department).toEqual({ id: row.department_id, name: row.name });
     }
+  });
+
+  it("has one entry per department that handles requests, IT Operations first, each matching independent SQL", async () => {
+    await seedAll();
+    const s = await getDashboardSummary(today);
+    expect(s.newHiresWaiting.map((w) => w.department.code)).toEqual(["ITOPS", "OPS", "PEOPLE"]);
+    for (const w of s.newHiresWaiting) {
+      const rows = await sql<{ employee: string; ref: string }>(
+        `SELECT DISTINCT i.employee_id::text employee, r.reference ref
+         FROM onboarding_instances i JOIN service_requests r ON r.requester_id = i.employee_id
+         WHERE i.status = 'ACTIVE' AND r.handling_department_id = $1::uuid AND r.status IN ('SUBMITTED','ASSIGNED','IN_PROGRESS')`, w.department.id);
+      expect(w.count).toBe(new Set(rows.map((r) => r.employee)).size);
+      expect(w.hires.flatMap((h) => h.openRequests.map((r) => r.reference)).sort()).toEqual(rows.map((r) => r.ref).sort());
+    }
+  });
+
+  it("lists a hire under every department they are waiting on, with only that department's requests", async () => {
+    await seedAll();
+    const hire = base.newHireIds[0];
+    const ids = async (code: string) => (await db.requestCategory.findUniqueOrThrow({ where: { code: code as never } }));
+    for (const code of ["IT_EQUIPMENT", "HR_QUERY"]) {
+      const c = await ids(code);
+      await db.serviceRequest.create({ data: { requesterId: hire, categoryId: c.id, handlingDepartmentId: c.handlingDepartmentId, title: `via ${code}`, description: "d", priority: "LOW" } });
+    }
+    const s = await getDashboardSummary(today);
+    const people = s.newHiresWaiting.find((w) => w.department.code === "PEOPLE")!;
+    const mine = people.hires.find((h) => h.id === hire)!;
+    expect(mine.openRequests.map((r) => r.title)).toEqual(["via HR_QUERY"]);
+    expect(onIt(s).hires.find((h) => h.id === hire)!.openRequests.map((r) => r.title)).toContain("via IT_EQUIPMENT");
+    expect(onIt(s).hires.find((h) => h.id === hire)!.openRequests.map((r) => r.title)).not.toContain("via HR_QUERY");
   });
 
   it("depends on today's date for overdue tasks only", async () => {
@@ -152,7 +188,7 @@ describe("cross-module insight: new hires waiting on IT", () => {
       data: { requesterId, categoryId: c.id, handlingDepartmentId: c.handlingDepartmentId, title: "t", description: "d", priority: "LOW", status, ...(status !== "SUBMITTED" && { assigneeId: base.personas.itSupport }) },
     });
   };
-  const waiting = async () => (await getDashboardSummary(today)).newHiresWithOpenItRequests;
+  const waiting = async () => onIt(await getDashboardSummary(today));
 
   it("counts a hire once however many open IT requests they have, and lists each request", async () => {
     await seedAll();
@@ -207,7 +243,7 @@ describe("empty system", () => {
     expect(s.requestsByCategory).toHaveLength(5);
     expect(s.requestsByCategory.every((c) => c.count === 0 && c.open === 0)).toBe(true);
     expect(s.onboarding).toEqual({ activeHires: 0, overdueTasks: 0, blockedTasks: 0 });
-    expect(s.newHiresWithOpenItRequests).toEqual({ count: 0, hires: [] });
+    expect(s.newHiresWaiting.map((w) => [w.department.code, w.count, w.hires.length])).toEqual([["ITOPS", 0, 0], ["OPS", 0, 0], ["PEOPLE", 0, 0]]);
     expect(s.completionRateByCountry.every((c) => c.hires === 0 && c.completionRate === 0)).toBe(true);
     expect(s.headcountByCountry.reduce((a, r) => a + r.count, 0)).toBe(100);
   });

@@ -6,16 +6,19 @@ export interface DashboardSummary {
   requestsByStatus: { status: RequestStatus; count: number }[];
   requestsByCategory: { category: { id: string; code: string; name: string }; count: number; open: number }[];
   onboarding: { activeHires: number; overdueTasks: number; blockedTasks: number };
-  newHiresWithOpenItRequests: {
+  /** One entry per department that handles requests (IT Operations first), listing new hires waiting on it. */
+  newHiresWaiting: {
+    department: { id: string; code: string; name: string };
     count: number;
     hires: {
       id: string;
       fullName: string;
       country: string;
+      department: { id: string; name: string };
       instanceId: string;
       openRequests: { id: string; reference: string; title: string; status: RequestStatus; priority: RequestPriority }[];
     }[];
-  };
+  }[];
   completionRateByCountry: { country: string; hires: number; tasksTotal: number; tasksCompleted: number; completionRate: number }[];
 }
 

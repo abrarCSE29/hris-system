@@ -98,7 +98,7 @@ export default function DashboardPage() {
       </section>
 
       <section aria-label="Requests and onboarding together" className="grid gap-4 lg:grid-cols-2">
-        <HiresWaiting data={s.newHiresWithOpenItRequests} />
+        <HiresWaiting waiting={s.newHiresWaiting} />
         <CompletionByCountry rows={s.completionRateByCountry} />
       </section>
     </div>

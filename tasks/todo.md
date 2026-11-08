@@ -270,7 +270,7 @@ countries) with mixed task states: ≥3 overdue, ≥2 blocked, some completed. M
 
 ### Task 18: Dashboard summary API
 **Description:** `GET /dashboard/summary` (HR only): headcount by country, requests by status/category,
-onboarding totals, `newHiresWithOpenItRequests`, `completionRateByCountry`.
+onboarding totals, `newHiresWaiting` (per handling department), `completionRateByCountry`.
 **Acceptance criteria:**
 - [x] Values verified against seed via independent SQL
 - [x] Non-HR → 403

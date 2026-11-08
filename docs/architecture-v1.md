@@ -447,9 +447,14 @@ All paths below are relative to `/api/v1`.
 
 | Method | Path | Auth | Response |
 |---|---|---|---|
-| GET | `/dashboard/summary` | H | `{ headcountByCountry, requestsByStatus, requestsByCategory, onboarding: { activeHires, overdueTasks, blockedTasks }, newHiresWithOpenItRequests, completionRateByCountry }` |
+| GET | `/dashboard/summary` | H | `{ headcountByCountry, requestsByStatus, requestsByCategory, onboarding: { activeHires, overdueTasks, blockedTasks }, newHiresWaiting, completionRateByCountry }` |
 
-The last two fields are the cross-module insights.
+The last two fields are the cross-module insights. `newHiresWaiting` has one entry per department that handles
+requests (a department with at least one request category: IT Operations, Operations, People & Culture), IT Operations
+first, then by name: `{ department: { id, code, name }, count, hires: [{ id, fullName, country, department, instanceId,
+openRequests }] }`. A hire is listed under every department they have an open request with, and `openRequests` holds only
+that department's requests. The dashboard card "New hires waiting on <department>" has a selector for these departments
+and starts on IT Operations.
 
 ### 4.7 Department breakdown *(added after v1 sign-off)*
 
