@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -9,15 +9,16 @@ interface Props {
   alert?: boolean;
 }
 
+/** The words sit on the left and the figure, large, on the right. */
 export function KpiCard({ label, value, hint, alert = false }: Props) {
   return (
     <Card size="sm">
-      <CardHeader>
-        <CardDescription className="text-xs font-medium uppercase tracking-wide">{label}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <CardTitle className={cn("text-3xl font-semibold tracking-tight", alert && value > 0 && "text-primary")}>{value}</CardTitle>
-        {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+      <CardContent className="flex items-center justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <div className="text-sm font-bold tracking-wide text-foreground uppercase">{label}</div>
+          {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+        </div>
+        <div className={cn("shrink-0 text-4xl font-semibold tracking-tight tabular-nums", alert && value > 0 && "text-primary")}>{value}</div>
       </CardContent>
     </Card>
   );

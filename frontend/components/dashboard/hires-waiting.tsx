@@ -8,7 +8,7 @@ export function HiresWaiting({ data }: { data: DashboardSummary["newHiresWithOpe
   return (
     <Card>
       <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
+        <CardTitle role="heading" aria-level={2} className="text-xl font-bold">
           New hires waiting on IT <span className="text-muted-foreground">({data.count})</span>
         </CardTitle>
         <CardDescription>People who are still onboarding and have an unresolved request with IT Operations.</CardDescription>

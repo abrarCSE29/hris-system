@@ -53,7 +53,7 @@ export function BarCard({ title, description, data, series, stacked = false }: P
   return (
     <Card>
       <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
+        <CardTitle role="heading" aria-level={2} className="text-xl font-bold">
           {title}
         </CardTitle>
         <CardDescription>{description}</CardDescription>

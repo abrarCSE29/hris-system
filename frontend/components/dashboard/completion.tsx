@@ -7,18 +7,21 @@ export function CompletionByCountry({ rows }: { rows: DashboardSummary["completi
   return (
     <Card>
       <CardHeader>
-        <CardTitle role="heading" aria-level={2}>Onboarding completion by country</CardTitle>
+        <CardTitle role="heading" aria-level={2} className="text-xl font-bold">Onboarding completion by country</CardTitle>
         <CardDescription>Share of assigned onboarding tasks that are done, by where the new joiner works.</CardDescription>
       </CardHeader>
       <CardContent>
       <ul className="space-y-4">
         {rows.map((r) => (
           <li key={r.country} className="space-y-1.5">
-            <div className="flex items-baseline justify-between gap-2 text-sm">
-              <span className="font-medium">{labelize(r.country)}</span>
-              <span className="text-muted-foreground">
-                {r.hires === 0 ? "No onboardings" : `${r.completionRate}% · ${r.tasksCompleted}/${r.tasksTotal} tasks · ${r.hires} ${r.hires === 1 ? "hire" : "hires"}`}
-              </span>
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-sm font-medium">{labelize(r.country)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {r.hires === 0 ? "No onboardings" : `${r.tasksCompleted}/${r.tasksTotal} tasks · ${r.hires} ${r.hires === 1 ? "hire" : "hires"}`}
+                </div>
+              </div>
+              {r.hires > 0 && <div className="shrink-0 text-3xl font-semibold tracking-tight tabular-nums">{r.completionRate}%</div>}
             </div>
             <ProgressBar animateOnMount percent={r.completionRate} label={`${labelize(r.country)} onboarding completion`} />
           </li>
