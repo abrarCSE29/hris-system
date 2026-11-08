@@ -21,7 +21,7 @@ const call = async (route: typeof breakdownRoute, userId: string | null) =>
   route(new Request("http://x", { headers: userId ? { cookie: `${SESSION_COOKIE}=${await signSession(userId)}` } : {} }));
 
 type Breakdown = Awaited<ReturnType<typeof import("@/services/departments").getDepartmentBreakdown>>;
-const get = async (): Promise<Breakdown> => (await call(breakdownRoute, base.personas.hrAdmin)).json();
+const get = async (): Promise<Breakdown> => (await (await call(breakdownRoute, base.personas.hrAdmin)).json()) as Breakdown;
 
 describe("GET /departments/breakdown", () => {
   it("is HR-only", async () => {
@@ -56,8 +56,8 @@ describe("GET /departments/breakdown", () => {
 
   it("total equals the dashboard headcount", async () => {
     const body = await get();
-    const summary = await (await call(summaryRoute, base.personas.hrAdmin)).json();
-    const dashboardTotal = summary.headcountByCountry.reduce((n: number, c: { count: number }) => n + c.count, 0);
+    const summary = (await (await call(summaryRoute, base.personas.hrAdmin)).json()) as { headcountByCountry: { count: number }[] };
+    const dashboardTotal = summary.headcountByCountry.reduce((n, c) => n + c.count, 0);
     expect(body.total).toBe(dashboardTotal);
   });
 

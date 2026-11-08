@@ -12,7 +12,10 @@ const BCRYPT_COST = 10;
 const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", BCRYPT_COST);
 
 export interface AuthUser extends PublicUser {
-  /** Department this user heads, if any. Internal: decides request triage scope. */
+  /**
+   * Department this user heads. A Manager is the head of their own department (there is no separate head with extra
+   * permissions); anyone else has none. Internal: decides request triage scope.
+   */
   headOfDepartmentId: string | null;
 }
 
@@ -75,10 +78,10 @@ export function readCookie(req: Request, name: string): string | null {
 export async function loadAuthUser(userId: string): Promise<AuthUser | null> {
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    include: { ...userInclude, headOf: { select: { id: true }, take: 1 } },
+    include: userInclude,
   });
   if (!u) return null;
-  return { ...serializeUser(u), headOfDepartmentId: u.headOf[0]?.id ?? null };
+  return { ...serializeUser(u), headOfDepartmentId: u.role === "MANAGER" ? u.departmentId : null };
 }
 
 /** The public shape returned to clients (spec §4.2); omits internal fields. */

@@ -477,7 +477,7 @@ An HR Admin view of how the workforce is spread across departments.
 | Role | Summary |
 |---|---|
 | **Employee** | Submits requests; sees own requests and requests assigned to them; sees own onboarding checklist; works onboarding tasks owned by their department. |
-| **Manager** | Everything an Employee can do, plus: sees requests from direct reports; as a department head, sees and assigns requests routed to that department; monitors onboarding of direct reports; works `MANAGER` tasks for their new hires. |
+| **Manager** | Everything an Employee can do, plus: sees requests from direct reports; as head of their own department (the Manager role is the department head; there is no separate head with extra permissions), sees and assigns requests routed to that department; monitors onboarding of direct reports; works `MANAGER` tasks for their new hires. |
 | **HR Admin** | Sees everything in both modules; creates templates and new hires; assigns checklists; uses the dashboard. |
 
 Working requests and onboarding tasks depends on **department membership**, not on a special role: an
@@ -488,8 +488,8 @@ Employee in IT Operations can be assigned IT requests and complete IT onboarding
 | Capability | Employee | Manager | HR Admin |
 |---|---|---|---|
 | Submit request | ✅ | ✅ | ✅ |
-| View requests | Own + assigned to me | + direct reports' + own department's queue (if head) | All, filterable by country |
-| Assign request | ❌ | Requests routed to the department they head | ✅ |
+| View requests | Own + assigned to me | + direct reports' + own department's queue | All, filterable by country |
+| Assign request | ❌ | Requests routed to their own department | ✅ |
 | Start / resolve request | If assignee | If assignee | If assignee |
 | Close request | If requester | If requester | ✅ |
 | Comment | On any request they can view | On any request they can view | ✅ |
@@ -542,8 +542,8 @@ allowed and disallowed roles and each role's request scope.
 ```mermaid
 stateDiagram-v2
     [*] --> Submitted: submit (any user)
-    Submitted --> Assigned: assign (department head / HR Admin)
-    Assigned --> Assigned: reassign (department head / HR Admin)
+    Submitted --> Assigned: assign (Manager of the handling department / HR Admin)
+    Assigned --> Assigned: reassign (Manager of the handling department / HR Admin)
     Assigned --> InProgress: start (assignee only)
     InProgress --> Resolved: resolve (assignee only)
     Resolved --> Closed: close (requester / HR Admin)
@@ -553,7 +553,7 @@ stateDiagram-v2
 | From | Action | To | Who | Notes |
 |---|---|---|---|---|
 | — | `submit` | Submitted | Any user | Routed to the category's handling department |
-| Submitted / Assigned | `assign` | Assigned | Head of the handling department; HR Admin | Assignee must be an active member of the handling department |
+| Submitted / Assigned | `assign` | Assigned | Manager of the handling department; HR Admin | Assignee must be an active member of the handling department |
 | Assigned | `start` | In Progress | Assignee only | |
 | In Progress | `resolve` | Resolved | Assignee only | Optional note |
 | Resolved | `close` | Closed | Requester; HR Admin | Final state |
@@ -659,8 +659,8 @@ Deliberately left out to fit the timeline. None of these appear in the code.
 
 ### Assumptions
 
-1. A Manager's **team** is their direct reports. The **head of the handling department** triages and
-   assigns requests routed there.
+1. A Manager's **team** is their direct reports. The **Manager of the handling department** (a Manager is
+   the head of their own department) triages and assigns requests routed there.
 2. There is no separate approval state; "approve and assign" is the assign step.
 3. Each onboarding task has at most one dependency.
 4. Overdue is calculated against today's date in Asia/Dhaka.

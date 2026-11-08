@@ -69,8 +69,9 @@ describe("scopeRequests", () => {
     expect(await visible(ids.stranger)).toEqual([]);
   });
 
-  it("a Manager sees their direct reports' requests", async () => {
-    expect(await visible(ids.teamLead)).toEqual(["r1"]);
+  it("a Manager sees their direct reports' requests and their own department's queue", async () => {
+    // r1 via the direct report; r3 via the Ops queue (a Manager heads their own department). Never r2 (IT queue).
+    expect(await visible(ids.teamLead)).toEqual(["r1", "r3"]);
   });
 
   it("a department head sees their department's whole queue, and no other department's", async () => {
@@ -80,9 +81,18 @@ describe("scopeRequests", () => {
     expect(await visible(ids.opsHead)).toEqual(["r2", "r3"]);
   });
 
-  it("a Manager who heads nothing gets no department-queue access", async () => {
-    // teamLead is a Manager but not a head: only the direct report's request, not the Ops queue.
-    expect(await visible(ids.teamLead)).not.toContain("r3");
+  it("a Manager has the same queue access whether or not they are the department's listed head", async () => {
+    // teamLead is not Ops' listed head (opsHead is), yet sees the Ops queue: the Manager role is what grants it.
+    expect(await visible(ids.teamLead)).toContain("r3");
+    expect(await visible(ids.teamLead)).not.toContain("r2");
+  });
+
+  it("an Employee gets no department-queue access, even if they are the department's listed head", async () => {
+    await db.department.update({ where: { id: (await db.user.findUniqueOrThrow({ where: { id: ids.other } })).departmentId }, data: { headId: ids.other } });
+    expect(await visible(ids.other)).toEqual(["r2", "r3"]); // only their own requests, as before
+    const opsRequests = await visible(ids.stranger);
+    expect(opsRequests).toEqual([]);
+    await db.department.update({ where: { id: (await db.user.findUniqueOrThrow({ where: { id: ids.other } })).departmentId }, data: { headId: ids.opsHead } });
   });
 
   it("returns an empty (match-all) clause only for HR Admin", async () => {

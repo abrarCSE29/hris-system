@@ -87,7 +87,7 @@ Aggregates and cross-module insights, deployment, README, DEBUG_LOG.
 - **Created users** are always `EMPLOYEE` and `ON_PROBATION`; `role` cannot be set (unknown fields are
   rejected with 422). `managerId` must be a user with the Manager role.
 - **"Active member" for assigning work** = status `ACTIVE` or `ON_PROBATION` (not `ON_NOTICE`).
-- **`GET /users/assignable`:** HR Admin for any department; a Manager only for the department they head
+- **`GET /users/assignable`:** HR Admin for any department; a Manager only for their own department
   (403 otherwise).
 - **Seeding** refuses to wipe a non-local database unless `SEED_CONFIRM=yes` and `SEED_PASSWORD` is set.
   Demo logins: `hr.admin@`, `manager@`, `new.hire@`, `it.support@hris.test`.
@@ -102,6 +102,12 @@ Aggregates and cross-module insights, deployment, README, DEBUG_LOG.
   or the hire's manager for manager tasks) can start or complete it, same as service requests. HR Admin still sees
   every task and checklist. An HR Admin in the owning department (People & Culture) owns that department's tasks.
   Starting a task still records no actor; completing records `completedBy`.
+
+- **Manager = department head (changed on request):** every Manager is treated as the head of their own department
+  and can see and assign that department's service requests. There is no separate head role or extra permission:
+  `headOfDepartmentId` is now derived from the user's role and department, not from `departments.head_id`. That
+  column stays as the department's listed head (shown on the Departments page, default manager for new hires) and
+  grants nothing. A Manager still works only in their own department; HR Admin keeps seeing everything.
 
 ## Frontend design rule (set by the user)
 

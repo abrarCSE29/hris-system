@@ -55,12 +55,12 @@ variable when seeding.
 | Email | Role | Good for seeing |
 |---|---|---|
 | `hr.admin@hris.test` | HR Admin | Dashboard, all requests, People, Onboarding overview, Templates, add a new hire |
-| `manager@hris.test` | Manager (Engineering Manager, not a department head) | "My team", direct reports' requests and onboarding, their manager tasks in the Task queue. Has no Assign button. |
+| `manager@hris.test` | Manager (Engineering) | "My team", direct reports' requests and onboarding, their manager tasks in the Task queue. Also heads Engineering: sees and assigns Engineering's request queue. |
 | `new.hire@hris.test` | Employee, currently onboarding | "My onboarding" checklist with blocked and overdue tasks; their own requests |
 | `it.support@hris.test` | Employee in IT Operations | Requests assigned to them (start/resolve); IT onboarding tasks in the Task queue |
-| `farid.tan@hris.test` | Manager, **Head of IT Operations** | IT's whole request queue, with Assign / Reassign |
+| `farid.tan@hris.test` | Manager (IT Operations) | IT's whole request queue, with Assign / Reassign |
 
-Other department heads are listed on the People page (filter by role in the API: `GET /users?role=MANAGER`).
+Every Manager is the head of their own department; there is no separate head role. Managers are listed on the People page (API: `GET /users?role=MANAGER`).
 
 ## Everyday commands
 

@@ -120,8 +120,11 @@ describe("GET /users/assignable", () => {
     expect((await getAssignable(await as(engHeadId, url(ids.departmentIds.ITOPS)))).status).toBe(403);
   });
 
-  it("rejects non-head Managers and Employees, and a missing departmentId", async () => {
-    expect((await getAssignable(await as(ids.personas.manager, url(ids.departmentIds.ENG)))).status).toBe(403);
+  it("lets any Manager list their own department, but rejects another department, Employees and a missing departmentId", async () => {
+    const mgrDept = (await db.user.findUniqueOrThrow({ where: { id: ids.personas.manager } })).departmentId;
+    const otherDept = Object.values(ids.departmentIds).find((d) => d !== mgrDept)!;
+    expect((await getAssignable(await as(ids.personas.manager, url(mgrDept)))).status).toBe(200);
+    expect((await getAssignable(await as(ids.personas.manager, url(otherDept)))).status).toBe(403);
     expect((await getAssignable(await as(employeeId, url(ids.departmentIds.ENG)))).status).toBe(403);
     expect((await getAssignable(await as(ids.personas.hrAdmin, "/api/v1/users/assignable"))).status).toBe(422);
     expect((await getAssignable(await as(null, url(ids.departmentIds.ENG)))).status).toBe(401);
