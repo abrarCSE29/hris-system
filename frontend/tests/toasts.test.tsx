@@ -3,7 +3,10 @@ import { useMutation } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
 import { failureMessage, Providers } from "@/components/providers";
+import { useChatDraft } from "@/lib/hooks/chat";
+import { setServiceUnavailable } from "@/lib/service-status";
 import { ApiClientError } from "@/lib/api";
 
 beforeAll(() => {
@@ -77,5 +80,43 @@ describe("failureMessage", () => {
     expect(failureMessage(new ApiClientError(422, "V", "x", [{ path: "a", message: "b" }]))).toBe("Please check the highlighted fields.");
     expect(failureMessage(new ApiClientError(500, "INTERNAL", "Internal server error", []))).toBe("Internal server error");
     expect(failureMessage(undefined)).toBe("Something went wrong. Please try again.");
+  });
+});
+
+describe("when the AI service is down", () => {
+  function Draft() {
+    const draft = useChatDraft();
+    return <button onClick={() => draft.mutate({ message: "my laptop is hot", page: "/requests" })}>draft</button>;
+  }
+  const down = (status: number, body: unknown) => vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status }))));
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setServiceUnavailable(false);
+    toast.dismiss(); // toasts live in a module-level store, so one test's toast would show in the next test's render
+  });
+
+  it("says so in a toast and leaves the rest of the page alone", async () => {
+    down(503, { error: { code: "AI_UNAVAILABLE", message: "The assistant can't draft right now. You can still fill in the form yourself.", requestId: "r-1" } });
+    render(<Providers><p>the page</p><Draft /></Providers>);
+    await userEvent.click(screen.getByRole("button", { name: "draft" }));
+    expect(await screen.findByText(/The AI service is currently unavailable/)).toBeTruthy();
+    expect(screen.queryByText("Service Unavailable")).toBeNull(); // no full-page "backend is down" window
+    expect(screen.getByText("the page")).toBeTruthy();
+  });
+
+  it("still shows the backend-down window when the backend itself is unreachable", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("fetch failed"))));
+    render(<Providers><Draft /></Providers>);
+    await userEvent.click(screen.getByRole("button", { name: "draft" }));
+    expect(await screen.findByText("Service Unavailable")).toBeTruthy();
+    expect(screen.queryByText(/AI service is currently unavailable/)).toBeNull(); // not blamed on the AI
+  });
+
+  it("keeps other draft failures on the server's own message", async () => {
+    down(422, { error: { code: "VALIDATION_FAILED", message: "Message is too long" } });
+    render(<Providers><Draft /></Providers>);
+    await userEvent.click(screen.getByRole("button", { name: "draft" }));
+    expect(await screen.findByText("Message is too long")).toBeTruthy();
+    expect(screen.queryByText(/AI service is currently unavailable/)).toBeNull();
   });
 });

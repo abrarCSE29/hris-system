@@ -21,7 +21,7 @@ describe("backend unavailable", () => {
   it.each([
     ["network failure", () => Promise.reject(new TypeError("fetch failed"))],
     ["502 from the proxy", () => Promise.resolve(reply(502))],
-    ["503", () => Promise.resolve(reply(503, { error: { code: "X", message: "x" } }))],
+    ["503 that is not the backend's envelope", () => Promise.resolve(reply(503))],
     ["504", () => Promise.resolve(reply(504))],
     ["500 that is not the backend's envelope", () => Promise.resolve(reply(500))],
   ])("shows the window on %s", async (_n, impl) => {
@@ -30,6 +30,20 @@ describe("backend unavailable", () => {
     await expect(api("/requests")).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
     expect(await screen.findByText("Service Unavailable")).toBeTruthy();
     expect(screen.getByText("Please try again later.")).toBeTruthy();
+  });
+
+  it.each([500, 502, 503, 504])("does not show it for the backend's own %i error (a normal error body means the backend answered)", async (status) => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(reply(status, { error: { code: "SOMETHING_ELSE", message: "A specific failure" } }))));
+    render(<Providers><div /></Providers>);
+    await expect(api("/requests")).rejects.toMatchObject({ status, code: "SOMETHING_ELSE" });
+    expect(screen.queryByText("Service Unavailable")).toBeNull();
+  });
+
+  it("does not show it when only the AI service is down (the backend answers 503 AI_UNAVAILABLE)", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(reply(503, { error: { code: "AI_UNAVAILABLE", message: "The assistant can't draft right now." } }))));
+    render(<Providers><div /></Providers>);
+    await expect(api("/requests/chat-draft", { method: "POST", body: { message: "x", page: "/" } })).rejects.toMatchObject({ status: 503, code: "AI_UNAVAILABLE" });
+    expect(screen.queryByText("Service Unavailable")).toBeNull();
   });
 
   it("does not show it for the backend's own 500 error", async () => {
