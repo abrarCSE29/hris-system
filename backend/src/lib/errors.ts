@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logUnexpected } from "./logger";
 
 export type ErrorCode =
   | "UNAUTHORIZED"
@@ -33,17 +34,21 @@ export class ApiError extends Error {
   }
 }
 
-export function errorResponse(err: ApiError): NextResponse {
-  const body: { error: { code: ErrorCode; message: string; details?: unknown } } = {
+export function errorResponse(err: ApiError, requestId?: string): NextResponse {
+  const body: { error: { code: ErrorCode; message: string; details?: unknown; requestId?: string } } = {
     error: { code: err.code, message: err.message },
   };
   if (err.details !== undefined) body.error.details = err.details;
+  if (requestId) body.error.requestId = requestId;
   return NextResponse.json(body, { status: err.status });
 }
 
-/** Converts any thrown value into the spec's error envelope. Unknown errors become a generic 500. */
-export function toErrorResponse(err: unknown): NextResponse {
-  if (err instanceof ApiError) return errorResponse(err);
-  console.error(err);
-  return errorResponse(new ApiError("INTERNAL", "Internal server error"));
+/**
+ * Converts any thrown value into the spec's error envelope. Unknown errors become a generic 500 (nothing of the error is returned)
+ * and are logged as `http.error`, with `context` (route, method, user) added to the line.
+ */
+export function toErrorResponse(err: unknown, requestId?: string, context: Record<string, unknown> = {}): NextResponse {
+  if (err instanceof ApiError) return errorResponse(err, requestId);
+  logUnexpected(err, { requestId, ...context });
+  return errorResponse(new ApiError("INTERNAL", "Internal server error"), requestId);
 }

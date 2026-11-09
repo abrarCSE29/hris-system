@@ -564,9 +564,10 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 38: The `withRequest` wrapper
 **Description:** One wrapper for every route: request id (valid incoming `x-request-id` kept, else generated), timing, error conversion, the `http.request` line, and an `http.error` record with redacted stack for unexpected errors. `withAuth` is built on it; login, logout and health use it.
 **Acceptance criteria:**
-- [ ] Every response carries `x-request-id`; error bodies carry `error.requestId`; a 500 body has no stack or message
-- [ ] The request line has method, route **pattern**, status, ms, `userId`; levels info / warn / error by status; `/health` logs nothing
-- [ ] All existing route tests pass unchanged
+- [x] Every response carries `x-request-id`; error bodies carry `error.requestId`; a 500 body has no stack or message
+- [x] The request line has method, route **pattern**, status, ms, `userId`; levels info / warn / error by status; `/health` logs nothing
+- [x] All existing route tests pass unchanged
+**Done:** `withRequest` (request id, route pattern from the route's own params, `http.request` line, `http.error` via `toErrorResponse`, `silent` option for health); `withAuth` rebuilt on it and passes `requestId` to handlers; login and health use it; `error.requestId` in the envelope. Two existing tests adjusted: health is now async, and the two 401 bodies differ only by `requestId`. 24 new tests, mutation-checked.
 **Dependencies:** T37
 **Files:** `backend/src/lib/{with-request,with-auth,errors}.ts`, `backend/app/api/v1/{auth/login,auth/logout,health}/route.ts`, `backend/tests/logging.test.ts`
 **Scope:** M

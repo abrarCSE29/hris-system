@@ -57,6 +57,30 @@ export function log(level: LogLevel, event: string, fields: Record<string, unkno
   }
 }
 
+const SAFE_CODE = /^[A-Z][A-Z0-9_]{0,39}$/;
+const SAFE_NAME = /^[A-Za-z][A-Za-z0-9_.$]{0,59}$/;
+
+/**
+ * The `http.error` line for an unexpected error (spec item 5): its name, a code if it has one that looks like a code (for example a
+ * Prisma `P2002` or `ECONNREFUSED`, never free text), and its message and stack after `redact`. `fields` carries the request context.
+ */
+export function logUnexpected(err: unknown, fields: Record<string, unknown> = {}): void {
+  try {
+    const e = err as { name?: unknown; code?: unknown; cause?: { code?: unknown }; message?: unknown; stack?: unknown } | null;
+    const isError = err instanceof Error;
+    const rawCode = e?.code ?? e?.cause?.code;
+    log("error", "http.error", {
+      ...fields,
+      errorName: isError && typeof e?.name === "string" && SAFE_NAME.test(e.name) ? e.name : isError ? "Error" : typeof err,
+      errorCode: typeof rawCode === "string" && SAFE_CODE.test(rawCode) ? rawCode : undefined,
+      message: redact(isError ? String(e?.message ?? "") : String(err), 1000),
+      stack: isError && typeof e?.stack === "string" ? redact(e.stack, 8000) : undefined,
+    });
+  } catch {
+    // Logging must not change the response.
+  }
+}
+
 const PATTERNS: [RegExp, string][] = [
   [/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, "[jwt]"],
   [/\bBearer\s+[^\s"',;]+/gi, "Bearer [redacted]"],
