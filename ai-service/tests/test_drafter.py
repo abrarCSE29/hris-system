@@ -60,7 +60,7 @@ class TestDraft:
     def test_a_valid_answer_becomes_the_response(self):
         r = run(Scripted(good()))
         assert (r.category, r.priority, r.department, r.attempts) == ("IT_EQUIPMENT", "URGENT", "ITOPS", 1)
-        assert r.model == "gemini-3.5-flash" and isinstance(r.latency_ms, int) and r.latency_ms >= 0
+        assert r.model == "qwen/qwen3.8-27b" and isinstance(r.latency_ms, int) and r.latency_ms >= 0
         assert r.low_confidence is False
 
     def test_low_confidence_is_flagged_below_the_threshold_only(self):
@@ -101,10 +101,18 @@ class TestDraft:
 
     def test_a_rate_limit_is_429(self):
         err = Exception("quota " + SECRET)
-        err.code = 429  # google's APIError carries the HTTP status as .code
+        err.code = 429  # some SDKs carry the HTTP status as .code
         with pytest.raises(DraftFailure) as e:
             run(Scripted(err))
         assert (e.value.status, e.value.code) == (429, "RATE_LIMITED")
+
+    def test_a_groq_style_status_code_is_understood(self):
+        for status, code in ((429, "RATE_LIMITED"), (401, "MODEL_AUTH")):
+            err = Exception("x " + SECRET)
+            err.status_code = status  # the groq SDK's errors carry the HTTP status as .status_code
+            with pytest.raises(DraftFailure) as e:
+                run(Scripted(err))
+            assert e.value.code == code
 
     def test_a_rejected_key_is_a_model_auth_error(self):
         err = Exception("denied")
@@ -201,8 +209,8 @@ class TestRoute:
                 res = c.post("/v1/draft", json=body(), headers=H)
             assert (res.status_code, res.json()["error"]["code"]) == (status, code)
 
-    def test_a_missing_google_key_is_a_clean_502(self, monkeypatch):
-        monkeypatch.setenv("GOOGLE_API_KEY", "")
+    def test_a_missing_groq_key_is_a_clean_502(self, monkeypatch):
+        monkeypatch.setenv("GROQ_API_KEY", "")
         get_settings.cache_clear()
         with TestClient(create_app(), raise_server_exceptions=False) as c:
             res = c.post("/v1/draft", json=body(), headers=H)
@@ -218,7 +226,7 @@ class TestLogsNeverHoldTheMessage:
             with api(Scripted(item, item)) as c:
                 c.post("/v1/draft", json=body(message=SECRET), headers=H)
         out = capsys.readouterr().out
-        assert SECRET not in out and "fake-google-key-for-tests" not in out
+        assert SECRET not in out and "fake-groq-key-for-tests" not in out
         events = {l["event"] for l in self.log_lines(out)}
         assert {"draft.start", "draft.ok", "draft.error", "draft.invalid_output"} <= events
 
@@ -241,7 +249,7 @@ class TestLogsNeverHoldTheMessage:
 
 
 class TestRealModelWiring:
-    def test_builds_gemini_with_structured_output_and_no_hidden_retries(self, monkeypatch):
+    def test_builds_groq_with_structured_output_and_no_hidden_retries(self, monkeypatch):
         import asyncio
 
         from app import drafter
@@ -260,12 +268,12 @@ class TestRealModelWiring:
                 made["schema"], made["method"] = schema, method
                 return FakeChain()
 
-        monkeypatch.setattr(drafter, "ChatGoogleGenerativeAI", FakeLLM)
+        monkeypatch.setattr(drafter, "ChatGroq", FakeLLM)
         model = drafter.build_model(get_settings())
         assert asyncio.run(model.ainvoke(["x"])).title == "Laptop overheating"
         assert asyncio.run(model.ainvoke(["x"])).title == "Laptop overheating"  # built once
-        assert made["init"] == {"model": "gemini-3.5-flash", "api_key": "fake-google-key-for-tests", "temperature": 0, "timeout": 20, "max_retries": 0}
-        assert made["schema"] is Draft and made["method"] == "json_schema"
+        assert made["init"] == {"model": "qwen/qwen3.8-27b", "api_key": "fake-groq-key-for-tests", "temperature": 0, "timeout": 20, "max_retries": 0}
+        assert made["schema"] is Draft and made["method"] == "function_calling"
 
 
 class TestNothingGoesToThirdParties:
@@ -281,7 +289,7 @@ class TestNothingGoesToThirdParties:
         import logging
 
         create_app()
-        for name in ("httpx", "httpx2", "httpcore", "urllib3", "google_genai"):
+        for name in ("httpx", "httpx2", "httpcore", "urllib3", "groq"):
             assert logging.getLogger(name).getEffectiveLevel() >= logging.WARNING
         # Even at warning level, or from a logger we did not think of, a request-URL line is dropped.
         logging.getLogger("httpx2").warning("HTTP Request: POST https://example.test/?key=SHOULD-NOT-PRINT")

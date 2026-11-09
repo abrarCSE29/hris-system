@@ -339,7 +339,9 @@ linking to People filtered by that department. Nav item for HR Admin only.
 **Scope:** M
 
 
-## Phase 5 — AI service (spec: docs/spec-ai-chat-draft.md)
+## Phase 5 — AI service (spec: docs/spec-ai-request-router.md)
+
+> Model changed after T30: Groq `qwen/qwen3.8-27b` replaces Gemini (spec v8). Task text below is the original record; the open real-key walkthroughs now need a `GROQ_API_KEY`.
 
 ### Task 23: AI service skeleton, security and logging
 **Description:** Create `ai-service/` (Python 3.14, uv, FastAPI): config from env, `GET /health` (public, no Gemini call),

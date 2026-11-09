@@ -43,7 +43,7 @@ const aiOk = (over: Record<string, unknown> = {}) => ({
   confidence: 0.93,
   lowConfidence: false,
   reasoning: "Hardware fault with a possible safety risk.",
-  model: "gemini-3.5-flash",
+  model: "qwen/qwen3.8-27b",
   latencyMs: 1180,
   attempts: 1,
   ...over,
@@ -113,7 +113,7 @@ describe("POST /requests/chat-draft: success", () => {
     const sentId = fetchMock.mock.calls[0][1].headers["x-request-id"];
     expect(row).toMatchObject({
       userId, page: "/requests", ip: "203.0.113.7", userAgent: "TestBrowser/1.0", requestId: sentId, outcome: "OK", errorCode: null,
-      error: null, errorDetail: null, attempts: 2, model: "gemini-3.5-flash", priority: "URGENT", lowConfidence: true, messageChars: SECRET.length,
+      error: null, errorDetail: null, attempts: 2, model: "qwen/qwen3.8-27b", priority: "URGENT", lowConfidence: true, messageChars: SECRET.length,
     });
     expect(Number(row.confidence)).toBe(0.4);
     expect(row.latencyMs).toBeGreaterThanOrEqual(0);
@@ -181,7 +181,7 @@ describe("POST /requests/chat-draft: every failure is a 503 and a record with it
     ["host not found", () => fetchMock.mockRejectedValue(Object.assign(new TypeError("fetch failed"), { cause: { code: "ENOTFOUND" } })), "AI_UNREACHABLE", "UNAVAILABLE", "host not found"],
     ["no answer in time", () => fetchMock.mockRejectedValue(new DOMException("slow", "TimeoutError")), "AI_TIMEOUT", "TIMEOUT", "timed out after 25s"],
     ["token rejected", () => fetchMock.mockResolvedValue(aiFails(401, "UNAUTHORIZED")), "AI_AUTH", "UNAVAILABLE", "AI service returned 401"],
-    ["Gemini rate limit", () => fetchMock.mockResolvedValue(aiFails(429, "RATE_LIMITED")), "AI_RATE_LIMITED", "UNAVAILABLE", "429 (rate limited)", "drafter.py"],
+    ["Groq rate limit", () => fetchMock.mockResolvedValue(aiFails(429, "RATE_LIMITED")), "AI_RATE_LIMITED", "UNAVAILABLE", "429 (rate limited)", "drafter.py"],
     ["AI service timed out", () => fetchMock.mockResolvedValue(aiFails(504, "TIMEOUT")), "AI_TIMEOUT", "TIMEOUT", "504"],
     ["model error", () => fetchMock.mockResolvedValue(aiFails(502, "MODEL_ERROR")), "AI_MODEL_ERROR", "UNAVAILABLE", "MODEL_ERROR"],
     ["no model key", () => fetchMock.mockResolvedValue(aiFails(502, "MODEL_NOT_CONFIGURED")), "AI_MODEL_ERROR", "UNAVAILABLE", "MODEL_NOT_CONFIGURED"],

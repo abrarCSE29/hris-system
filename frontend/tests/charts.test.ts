@@ -113,6 +113,11 @@ describe("barChartOptions", () => {
     expect(o.states?.active?.filter?.type).toBe("none");
   });
 
+  it("leaves room above the plot for the label on the tallest column, but not when stacked", () => {
+    expect(build().grid?.padding?.top).toBeGreaterThanOrEqual(20);
+    expect(build({ stacked: true }).grid?.padding?.top).toBe(0);
+  });
+
   it("uses the theme's colours for grid and axis text", () => {
     const o = build({ theme: { foreground: "#101010", mutedForeground: "#202020", border: "#303030" } });
     expect(o.grid?.borderColor).toBe("#303030");

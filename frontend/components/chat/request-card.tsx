@@ -26,7 +26,6 @@ interface Props {
   /** Fields the employee has changed by hand; the others still carry the "AI suggested" badge. */
   edited: DraftField[];
   lowConfidence: boolean;
-  reasoning: string;
   submitting: boolean;
   /** Field-level problems from the server, by field name. */
   errors: Map<string, string>;
@@ -36,7 +35,7 @@ interface Props {
 }
 
 /** The request form, filled in by the assistant. Every field is editable and nothing is sent until Submit. */
-export function RequestCard({ meta, values, edited, lowConfidence, reasoning, submitting, errors, onChange, onSubmit, onStartOver }: Props) {
+export function RequestCard({ meta, values, edited, lowConfidence, submitting, errors, onChange, onSubmit, onStartOver }: Props) {
   const suggested = (field: DraftField) => !edited.includes(field) && <Badge variant="secondary">AI suggested</Badge>;
   const error = (path: string) => (errors.has(path) ? <FieldError>{errors.get(path)}</FieldError> : null);
   const ready = values.title.trim() && values.description.trim() && values.categoryId && values.departmentId;
@@ -119,7 +118,6 @@ export function RequestCard({ meta, values, edited, lowConfidence, reasoning, su
         </Field>
       </FieldGroup>
 
-      {reasoning && <p className="text-xs text-muted-foreground">{reasoning}</p>}
 
       <div className="flex gap-2">
         <Button type="submit" disabled={submitting || !ready}>

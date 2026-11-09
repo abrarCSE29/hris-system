@@ -142,6 +142,7 @@ export function ChatHead({ firstName }: { firstName: string }) {
 
             <PastRequests
               requests={history.data?.data}
+              exclude={s.submitted?.id}
               loading={history.isPending && open}
               failed={history.isError}
               onNavigate={() => setOpen(false)}
@@ -157,7 +158,6 @@ export function ChatHead({ firstName }: { firstName: string }) {
                     values={s.values}
                     edited={s.edited}
                     lowConfidence={s.draft.lowConfidence}
-                    reasoning={s.draft.reasoning}
                     submitting={create.isPending}
                     errors={fieldErrors}
                     onChange={change}
@@ -169,6 +169,8 @@ export function ChatHead({ firstName }: { firstName: string }) {
             )}
 
             {s.submitted && (
+              <>
+                <ChatBubble from="you">{s.sent}</ChatBubble>
               <ChatBubble from="assistant" className="space-y-3">
                 <p role="status">
                   Done. <span className="font-medium">{s.submitted.reference}</span> was sent to {s.submitted.department}.
@@ -182,6 +184,7 @@ export function ChatHead({ firstName }: { firstName: string }) {
                   </Button>
                 </div>
               </ChatBubble>
+              </>
             )}
             <div ref={end} />
           </div>

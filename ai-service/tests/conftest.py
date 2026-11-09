@@ -8,10 +8,10 @@ TOKEN = "test-token-123"
 
 @pytest.fixture(autouse=True)
 def env(monkeypatch):
-    for name in ("GOOGLE_API_KEY", "AI_SERVICE_TOKEN", "APP_ENV", "DEBUG_LOG_PROMPTS", "GEMINI_MODEL"):
+    for name in ("GROQ_API_KEY", "AI_SERVICE_TOKEN", "APP_ENV", "DEBUG_LOG_PROMPTS", "GROQ_MODEL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("AI_SERVICE_TOKEN", TOKEN)
-    monkeypatch.setenv("GOOGLE_API_KEY", "fake-google-key-for-tests")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-groq-key-for-tests")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

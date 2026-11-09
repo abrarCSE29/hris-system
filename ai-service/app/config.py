@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     ai_service_token: str = ""
-    google_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash"
+    groq_api_key: str = ""
+    groq_model: str = "qwen/qwen3.8-27b"
     llm_timeout_seconds: float = 20
     confidence_threshold: float = 0.6
     log_level: str = "INFO"

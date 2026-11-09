@@ -1,7 +1,7 @@
 """
 JSON logs on stdout, one object per line, each carrying the request id.
 
-This service is stateless: it writes no files. Error output from libraries (LangChain, Google's SDK, Pydantic) can contain
+This service is stateless: it writes no files. Error output from libraries (LangChain, the model SDK, Pydantic) can contain
 the text they rejected, which may be an employee's message, so nothing from an exception is logged or returned except its
 type, its stack frames and a message that is known to be safe. See `redact_exception`.
 """
@@ -73,7 +73,7 @@ def setup_logging(level: str = "INFO") -> None:
         lg.handlers = []
         lg.propagate = True
     # HTTP client libraries log full request URLs at INFO. Keep them quiet so no URL (and nothing that might be in one) is printed.
-    for name in ("httpx", "httpx2", "httpcore", "urllib3", "google_genai", "google.auth", "langsmith"):
+    for name in ("httpx", "httpx2", "httpcore", "urllib3", "groq", "google_genai", "google.auth", "langsmith"):
         logging.getLogger(name).setLevel(logging.WARNING)
     access = logging.getLogger("uvicorn.access")
     access.handlers = []

@@ -4,7 +4,7 @@ Internal platform for a ~100-person company in Bangladesh, Malaysia, Sri Lanka a
 **Service Requests** and **Employee Onboarding** on one shared set of people, departments and roles, with an
 HR Admin dashboard.
 
-- Design and rationale: [`docs/architecture-v1.md`](docs/architecture-v1.md). The AI chat assistant: [`docs/spec-ai-chat-draft.md`](docs/spec-ai-chat-draft.md) (built on a slice of [`docs/architecture-v2.md`](docs/architecture-v2.md))
+- Design and rationale: [`docs/architecture-v1.md`](docs/architecture-v1.md). The AI chat assistant: [`docs/spec-ai-request-router.md`](docs/spec-ai-request-router.md) (built on a slice of [`docs/architecture-v2.md`](docs/architecture-v2.md))
 - Plan and task list: [`tasks/plan.md`](tasks/plan.md), [`tasks/todo.md`](tasks/todo.md)
 - Problems met while building, and how they were solved: [`DEBUG_LOG.md`](DEBUG_LOG.md)
 
@@ -13,7 +13,7 @@ HR Admin dashboard.
 ```
 frontend/   Next.js 16 + shadcn/ui + TanStack Query: the UI only. No database access, no secrets.
 backend/    Next.js 16 API-only (Route Handlers) + Prisma + zod: auth, access control, all data, migrations, seed.
-ai-service/ Python 3.14 + FastAPI + LangChain + Gemini: drafts a service request from a chat message. Private, stateless, no database.
+ai-service/ Python 3.14 + FastAPI + LangChain + Groq (Qwen): drafts a service request from a chat message. Private, stateless, no database.
 docs/       Architecture document.
 tasks/      Implementation plan and task list.
 docker-compose.yml   Local PostgreSQL (port 5433).
@@ -53,29 +53,29 @@ An employee types one message in the chat button (bottom right) and the assistan
 edit. The panel is a chat thread: above the message box it shows their earlier requests made through the assistant, as bubbles with the
 live status (it relies on `service_requests.channel`). It is a separate service, so the platform works without it (the button then points to the normal form).
 
-Prerequisites: [uv](https://docs.astral.sh/uv/) and a Google Gemini API key.
+Prerequisites: [uv](https://docs.astral.sh/uv/) and a Groq API key.
 
 ```bash
 cd ai-service
-cp .env.example .env     # then fill in GOOGLE_API_KEY and AI_SERVICE_TOKEN (see below). .env is git-ignored
+cp .env.example .env     # then fill in GROQ_API_KEY and AI_SERVICE_TOKEN (see below). .env is git-ignored
 uv sync                  # Python 3.14 is pinned in .python-version
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
 | Where | Variable | Meaning |
 |---|---|---|
-| `ai-service/.env` | `GOOGLE_API_KEY` | Your Gemini key. Only the AI service ever sees it. Never commit it. |
+| `ai-service/.env` | `GROQ_API_KEY` | Your Groq key. Only the AI service ever sees it. Never commit it. |
 | `ai-service/.env` | `AI_SERVICE_TOKEN` | A long random string the backend must send. Make one with `openssl rand -base64 36`. |
 | `backend/.env` | `AI_SERVICE_TOKEN` | The same string. |
 | `backend/.env` | `AI_SERVICE_URL` | `http://localhost:8000` locally. |
-| `ai-service/.env` | `GEMINI_MODEL` | Defaults to `gemini-3.5-flash`. |
+| `ai-service/.env` | `GROQ_MODEL` | Defaults to `qwen/qwen3.8-27b`. |
 
 Restart the backend after changing its `.env`. Check the service is up with `curl http://localhost:8000/health`.
 
 - **Tests:** `cd ai-service && uv run pytest` (no key needed; the model is faked).
 - **Quality check against the real model:** `uv run python -m eval.run` (needs the key; paces itself because the free tier allows only
   a few calls a minute; target at least 85% category accuracy).
-- **Free-tier limits:** a free Gemini key is rate limited. When it is, the assistant says it is unavailable and the form still works.
+- **Free-tier limits:** a free Groq key is rate limited. When it is, the assistant says it is unavailable and the form still works.
 
 #### Debugging the assistant (for developers)
 
@@ -109,8 +109,8 @@ Error output is redacted: it holds the exception type, the code locations and th
 |---|---|
 | `AI_UNREACHABLE` | The AI service is not running, the URL is wrong, or `AI_SERVICE_URL`/`AI_SERVICE_TOKEN` is empty in `backend/.env`. Try `curl <url>/health`. |
 | `AI_AUTH` | The two `AI_SERVICE_TOKEN` values differ. |
-| `AI_RATE_LIMITED` | Gemini's quota. Wait, or use a paid key. |
-| `AI_MODEL_ERROR` | Gemini returned an error, or `GOOGLE_API_KEY` is missing or rejected (see `error_detail`). |
+| `AI_RATE_LIMITED` | Groq's quota. Wait, or use a paid key. |
+| `AI_MODEL_ERROR` | Groq returned an error, or `GROQ_API_KEY` is missing or rejected (see `error_detail`). |
 | `AI_TIMEOUT` | The model took longer than 20 s. |
 | `AI_INVALID_OUTPUT`, `AI_REJECTED_BY_BACKEND`, `AI_BAD_RESPONSE` | The model's answer was unusable twice, named a category or department we did not offer, or was in an unexpected shape. If these rise, check the prompt and the model name. |
 

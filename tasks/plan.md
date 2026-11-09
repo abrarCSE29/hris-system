@@ -152,7 +152,9 @@ Aggregates and cross-module insights, deployment, README, DEBUG_LOG.
 - Known trade-off: white on `#ed1c3e` is about 4.3:1 contrast, just under WCAG AA (4.5:1) for small
   text. Keep red-filled controls at 14px medium or larger.
 
-## AI chat draft (added after v1; spec: `docs/spec-ai-chat-draft.md`, intent: `docs/intent/ai-chat-draft.md`)
+> Model changed after T30: Groq `qwen/qwen3.8-27b` replaces Gemini (see spec v8). Task text below is the original record.
+
+## AI chat draft (added after v1; spec: `docs/spec-ai-request-router.md`, intent: `docs/intent/ai-request-router.md`)
 
 An employee types one message; a Gemini model (`gemini-3.5-flash`, through LangChain structured output) returns the form
 fields; the employee edits them by hand and submits. The AI service is separate, stateless and database-free. The backend

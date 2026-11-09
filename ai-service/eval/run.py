@@ -1,5 +1,5 @@
 """
-Quality check against the real model. Run by hand (it needs GOOGLE_API_KEY and uses your quota):
+Quality check against the real model. Run by hand (it needs GROQ_API_KEY and uses your quota):
 
     uv run python -m eval.run [--pause SECONDS]
 
@@ -36,14 +36,14 @@ async def draft_with_patience(req, model, settings):
 
 async def main(pause: float) -> int:
     settings = get_settings()
-    if not settings.google_api_key:
-        print("GOOGLE_API_KEY is not set (put it in ai-service/.env).")
+    if not settings.groq_api_key:
+        print("GROQ_API_KEY is not set (put it in ai-service/.env).")
         return 2
     cases = json.loads((Path(__file__).parent / "cases.json").read_text())
     model = build_model(settings)
     category_ok = priority_ok = priority_total = flag_ok = flag_total = 0
 
-    print(f"model {settings.gemini_model}, {len(cases)} cases\n")
+    print(f"model {settings.groq_model}, {len(cases)} cases\n")
     for i, case in enumerate(cases, 1):
         req = DraftRequest.model_validate(
             {"message": case["message"], "requesterCountry": "MALAYSIA", "requesterDepartment": "Engineering",

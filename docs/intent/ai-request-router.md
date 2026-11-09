@@ -3,6 +3,9 @@
 Confirmed with the user (explicit yes) after an interview. Source for the spec that follows. Related: `docs/architecture-v2.md`
 §7.2 (chat assistant), which this narrows and changes.
 
+> **Changed later (v8 of the spec):** the user asked for a Groq-hosted model, `qwen/qwen3.8-27b`, in place of Gemini. The text below is the
+> original interview and still says Gemini; the spec is current.
+
 ## Statement of intent
 
 - **Outcome:** an employee types one plain message, for example "My laptop is firing up, need technical help". A Gemini

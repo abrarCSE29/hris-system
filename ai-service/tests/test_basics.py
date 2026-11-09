@@ -22,13 +22,13 @@ def protected_client() -> TestClient:
 
 
 class TestHealth:
-    def test_is_public_and_reports_the_model_without_calling_gemini(self, client):
+    def test_is_public_and_reports_the_model_without_calling_the_model(self, client):
         res = client.get("/health")
         assert res.status_code == 200
-        assert res.json() == {"status": "ok", "model": "gemini-3.5-flash"}
+        assert res.json() == {"status": "ok", "model": "qwen/qwen3.8-27b"}
 
     def test_model_comes_from_the_environment(self, monkeypatch):
-        monkeypatch.setenv("GEMINI_MODEL", "some-other-model")
+        monkeypatch.setenv("GROQ_MODEL", "some-other-model")
         get_settings.cache_clear()
         with TestClient(create_app()) as c:
             assert c.get("/health").json()["model"] == "some-other-model"
@@ -150,7 +150,7 @@ class TestLogs:
             c.get("/probe", headers={"X-Service-Token": TOKEN})
             c.get("/probe", headers={"X-Service-Token": "wrong-token-value"})
         out = capsys.readouterr().out
-        assert TOKEN not in out and "wrong-token-value" not in out and "fake-google-key-for-tests" not in out
+        assert TOKEN not in out and "wrong-token-value" not in out and "fake-groq-key-for-tests" not in out
 
     def test_debug_prompt_logging_is_off_by_default_and_warns_when_on(self, monkeypatch, capsys):
         with TestClient(create_app()):

@@ -1,13 +1,13 @@
 # Spec: AI chat draft for service requests
 
-Status: **approved (v7).** Last change: the chat shows the person's earlier requests made through it, as chat bubbles; requests now record their channel (FORM or CHAT). Source: `docs/intent/ai-chat-draft.md` (confirmed in an interview).
-Relationship to `docs/architecture-v2.md`: this builds a **narrow slice of §7.2** (the chat assistant) with Gemini in
+Status: **approved (v8).** Last change: the model is now `qwen/qwen3.8-27b` on Groq instead of Gemini. Before that (v7): the chat shows the person's earlier requests made through it, as chat bubbles; requests now record their channel (FORM or CHAT). Source: `docs/intent/ai-request-router.md` (confirmed in an interview).
+Relationship to `docs/architecture-v2.md`: this builds a **narrow slice of §7.2** (the chat assistant) with a Groq-hosted model in
 place of the generic LLM, and deliberately leaves out the rest of v2. Where the two differ, this spec wins for this
 build (see [What differs from v2](#what-differs-from-v2)).
 
 ## Objective
 
-An employee types **one plain message**, for example *"My laptop is firing up, need technical help"*. A Gemini Flash model
+An employee types **one plain message**, for example *"My laptop is firing up, need technical help"*. A Groq-hosted Qwen model
 (called through LangChain with structured output) returns the fields of the service-request form: **title, description,
 category, priority and department**. The employee reviews the draft, **edits any field directly**, and presses Submit,
 which creates the request through the normal endpoint. The AI never submits anything.
@@ -37,22 +37,22 @@ pass; a person confirms it.
 
 ## Assumptions (correct me before approving)
 
-1. Python **3.14** for the AI service (your choice), managed with **uv**. Checked: `langchain-google-genai` 4.4.3,
-   `langchain-core` 1.7.6, FastAPI and Pydantic 2 install and import on 3.14.4, and a `with_structured_output(..., method="json_schema")`
-   chain builds for `gemini-3.5-flash`. Google's SDK prints harmless `SyntaxWarning`s on import, which the service silences
+1. Python **3.14** for the AI service (your choice), managed with **uv**. Checked: `langchain-groq` 1.1.3,
+   `langchain-core`, FastAPI and Pydantic 2 install and import on 3.14, and a `with_structured_output(..., method="function_calling")`
+   chain builds for `qwen/qwen3.8-27b`. The model SDKs may print harmless `SyntaxWarning`s on import, which the service silences
    in its own startup. The Python version is pinned in `.python-version`.
 2. The AI service is **local-only for now** (`localhost:8000`). Deploying it (e.g. Render) is a later task.
 3. To keep the AI service simple and the database closed to it, **the backend sends the allowed categories and
    departments in each call**. The AI service has **no database access** and none of the `ai_*` views or roles from v2 §3.4.
-4. The message goes to **Google's Gemini API**, so it leaves the company's systems (you confirmed this is fine). Only the
-   message text, the requester's country and department name are sent **to Google**; never a name, email or id. The
-   caller's identity is kept only in our own database (assumption 8), never sent to Google or to the AI service.
+4. The message goes to **Groq's API**, so it leaves the company's systems (you confirmed this was fine for Google; you then chose Groq as the provider). Only the
+   message text, the requester's country and department name are sent **to Groq**; never a name, email or id. The
+   caller's identity is kept only in our own database (assumption 8), never sent to Groq or to the AI service.
 5. **One message in, one draft out.** No conversation history, no follow-up turns, no clarifying questions.
 6. A request records **how it was raised**: a new `channel` column on `service_requests` (`FORM` by default, `CHAT` when it was
    submitted from the assistant). This is what lets the chat show the person's earlier requests (see
    [Earlier requests in the chat](#earlier-requests-in-the-chat)); you chose this over a browser-only or "all my requests" list.
    There is still no draft token or transcript column. The separate developer record of chat use is its own table (assumption 8).
-7. The Gemini API key is added by the user in `ai-service/.env`. I will not read, print or commit it.
+7. The Groq API key is added by the user in `ai-service/.env`. I will not read, print or commit it.
 8. **Chat record (your requirement): every chat draft is recorded, and the web app shows the records.**
    - **The AI service stays stateless.** It writes no files and has no database. A file on a hosted AI service (Render and
      similar) lives on a disk that is wiped on every deploy or restart and is separate on each instance, so the record
@@ -76,8 +76,8 @@ pass; a person confirms it.
 
 | Part | Technology |
 |---|---|
-| AI service (`ai-service/`) | Python 3.14, FastAPI, Pydantic v2, `langchain-core`, `langchain-google-genai` (structured output via `with_structured_output(..., method="json_schema")`), uvicorn, pytest, uv |
-| Model | **`gemini-3.5-flash`**, set by `GEMINI_MODEL` so it can change without code |
+| AI service (`ai-service/`) | Python 3.14, FastAPI, Pydantic v2, `langchain-core`, `langchain-groq` (structured output via `with_structured_output(..., method="function_calling")`), uvicorn, pytest, uv |
+| Model | **`qwen/qwen3.8-27b`** on Groq, set by `GROQ_MODEL` so it can change without code |
 | Backend (`backend/`) | Next.js 16 route handlers, zod, Prisma, existing `withAuth`; a small `ai-client` using `fetch` with a timeout |
 | Frontend (`frontend/`) | Chat head and draft card, built from existing shadcn components (Sheet, Card, Field, Input, Textarea, Select via `SelectField`, Badge, Button); TanStack Query; Sonner toasts |
 
@@ -88,7 +88,7 @@ pass; a person confirms it.
 uv sync                                              # install pinned dependencies
 uv run uvicorn app.main:app --reload --port 8000     # run locally
 uv run pytest                                        # tests (the model is faked; no key needed)
-uv run python -m eval.run                            # optional quality check, calls Gemini, needs the key
+uv run python -m eval.run                            # optional quality check, calls the real model, needs the key
 
 # Existing apps (unchanged)
 npm run db:up                    # backend/: start Postgres
@@ -103,9 +103,9 @@ npx tsc --noEmit                 # type-check either app
 ai-service/
   app/
     main.py          FastAPI app, /health, /v1/draft, token check, docs off in production
-    config.py        reads env: GOOGLE_API_KEY, GEMINI_MODEL, AI_SERVICE_TOKEN, LLM_TIMEOUT_SECONDS
+    config.py        reads env: GROQ_API_KEY, GROQ_MODEL, AI_SERVICE_TOKEN, LLM_TIMEOUT_SECONDS
     schemas.py       Pydantic models: DraftRequest, Draft (the structured output), DraftResponse
-    drafter.py       builds the prompt, calls Gemini through LangChain, validates and retries once
+    drafter.py       builds the prompt, calls the model through LangChain, validates and retries once
     prompts.py       the system prompt (category and priority guide, rules)
     security.py      constant-time X-Service-Token check
     logging.py       JSON log lines, request id on every line, traceback redaction
@@ -156,18 +156,18 @@ frontend/
   "confidence": 0.93,              // 0..1
   "lowConfidence": false,          // true when confidence < 0.6 (threshold from config)
   "reasoning": "…",                // ≤ 300 chars, shown to the employee
-  "model": "gemini-3.5-flash",
+  "model": "qwen/qwen3.8-27b",
   "latencyMs": 1180,
   "attempts": 1                    // 2 when the first answer was invalid and the retry was used
 }
 ```
 
-Errors: `401` bad or missing token, `422` bad body, `429` `RATE_LIMITED` (Gemini's quota), `502` `MODEL_ERROR`, `MODEL_AUTH` (the model API
+Errors: `401` bad or missing token, `422` bad body, `429` `RATE_LIMITED` (Groq's quota), `502` `MODEL_ERROR`, `MODEL_AUTH` (the model API
 rejected our key), `MODEL_NOT_CONFIGURED` (no key set) or `INVALID_OUTPUT` (the model's answer was invalid twice), `504` `TIMEOUT`. Every error body is `{ "error": { "code": "…", "message": "…", "type": "…", "detail": "…" }, "requestId": "<the id sent>" }`,
 so the backend can store the id and the reason. `message` is a short cause; `type` is the exception class; `detail` is the
 **redacted** traceback trimmed to 4,000 characters (frames and causes, **no input text**). Examples of `message`: `model returned
-an unknown category code`, `google api returned 429`. A successful response also reports `attempts` (1 or 2). `GET /health` is public and returns `{ "status": "ok", "model": "…" }`;
-it does not call Gemini. Interactive docs are disabled in production.
+an unknown category code`, `rate limit reached`. A successful response also reports `attempts` (1 or 2). `GET /health` is public and returns `{ "status": "ok", "model": "…" }`;
+it does not call the model. Interactive docs are disabled in production.
 
 ### Backend
 
@@ -294,7 +294,7 @@ SELECT date_trunc('day', created_at) AS day, count(*) FILTER (WHERE attempts = 2
 FROM chat_drafts GROUP BY 1 ORDER BY 1 DESC;
 ```
 
-The AI service's `/health` endpoint (no Gemini call) is how a developer checks it is up. The records hold personal data (names via
+The AI service's `/health` endpoint (no model call) is how a developer checks it is up. The records hold personal data (names via
 the user, IPs), so they are protected by the same database access as everything else; row-level security is on with no
 policies. Keeping them "for the future" means this build never deletes them; a retention rule can be added later (see Open Questions).
 
@@ -308,7 +308,7 @@ when hosted. Nothing is written to disk.
 - **The request id ties it together.** The backend sends `X-Request-Id`; every log line and every error response carries it;
   the backend stores it on the `chat_drafts` row. To debug a failed row, take its request id from the database and search
   the AI service's logs for it.
-- **Redaction.** Error output from LangChain, Google's SDK and Pydantic can contain the text that was rejected, which may be the
+- **Redaction.** Error output from LangChain, the Groq SDK and Pydantic can contain the text that was rejected, which may be the
   employee's message or the model's draft. The logger therefore keeps the exception **type, the stack frames and the cause**
   but **removes input values** (for Pydantic errors it uses the error list without inputs; a message that contains the
   employee's text is replaced by `[redacted]`). Message text, names and the API key never appear in a log line.
@@ -354,7 +354,7 @@ def draft_request(req: DraftRequest, model: BaseChatModel) -> Draft:
 | Frontend | The request sends the current page path. Earlier requests: bubble pairs in order, live status badge, link to the request, loading, error and empty states, refreshed after Submit; the greeting stays first. Chat head appears in the signed-in layout only; send disabled while empty/waiting; card shows AI badges and the low-confidence note; every field editable; category change sets the department; submit sends the edited values (including `handlingDepartmentId`); AI-down shows the fallback; the sheet keeps the draft when closed and reopened | Vitest + Testing Library |
 | Quality (by hand) | ~15 labelled messages (including the laptop example, a vague "it's broken", a non-English message, an injection attempt, a facilities and an HR query) | `uv run python -m eval.run`, needs the key |
 
-Coverage target: every branch in the drafter and in `intake.ts` has a test. No test calls the real Gemini API.
+Coverage target: every branch in the drafter and in `intake.ts` has a test. No test calls the real model API.
 
 ## Boundaries
 
@@ -362,17 +362,17 @@ Coverage target: every branch in the drafter and in `intake.ts` has a test. No t
   let the employee see and edit every field before anything is saved; keep the existing form working; run the type-check
   and tests before committing; keep secrets in `.env` files that are git-ignored; use a separate branch.
 - **Ask first:** adding a dependency beyond those listed; any further database schema change (this build adds `chat_drafts` and `service_requests.channel`, both approved); adding the message text
-  to the chat record; any retention or deletion of records; sending anything but the message, country and department name to Gemini; deploying the AI service.
-- **Never:** let the AI submit, assign or write anything; commit or print `GOOGLE_API_KEY` or `AI_SERVICE_TOKEN`; log or store
-  message text (the record shows who and from where, not what was said); let the AI service write files or reach the database; turn on `DEBUG_LOG_PROMPTS` in production; call the real Gemini API from automated tests; expose the AI service to the browser; remove or weaken the existing
+  to the chat record; any retention or deletion of records; sending anything but the message, country and department name to the model provider; deploying the AI service.
+- **Never:** let the AI submit, assign or write anything; commit or print `GROQ_API_KEY` or `AI_SERVICE_TOKEN`; log or store
+  message text (the record shows who and from where, not what was said); let the AI service write files or reach the database; turn on `DEBUG_LOG_PROMPTS` in production; call the real model API from automated tests; expose the AI service to the browser; remove or weaken the existing
   form or its tests.
 
 ## Environment
 
 | Service | Variable | Purpose |
 |---|---|---|
-| ai-service | `GOOGLE_API_KEY` | Gemini key (added by the user; never committed) |
-| ai-service | `GEMINI_MODEL` | Model id, default `gemini-3.5-flash` |
+| ai-service | `GROQ_API_KEY` | Groq key (added by the user; never committed) |
+| ai-service | `GROQ_MODEL` | Model id, default `qwen/qwen3.8-27b` |
 | ai-service | `AI_SERVICE_TOKEN` | Shared secret the backend must send |
 | ai-service | `LLM_TIMEOUT_SECONDS` | Default `20` |
 | ai-service | `CONFIDENCE_THRESHOLD` | Default `0.6` (below it the draft is flagged) |
@@ -391,7 +391,7 @@ Coverage target: every branch in the drafter and in `intake.ts` has a test. No t
 | `QUESTION`, `DRAFT`, `OUT_OF_SCOPE` replies | Always a draft; vague or off-topic gets `lowConfidence` |
 | Signed draft token, `channel`, `intake_transcript`, `AI` vs `USER` sources | Only `channel` (FORM or CHAT) is recorded on `service_requests`, to show earlier chat requests; no token, transcript or sources. Instead a new `chat_drafts` table (written by the backend) records who asked and from where, for developers to query (no product screen) |
 | AI service reads `ai_*` views with a read-only database role | The backend sends the categories and departments; the AI service has no database access |
-| Generic "LLM", Pydantic-validated JSON | Gemini Flash via LangChain `with_structured_output` |
+| Generic "LLM", Pydantic-validated JSON | Groq-hosted Qwen via LangChain `with_structured_output` |
 | Post-submission routing, assignee recommendation, dashboard AI card | Not built |
 
 ## Success criteria
@@ -414,11 +414,11 @@ Coverage target: every branch in the drafter and in `intake.ts` has a test. No t
 10. When the AI service is down, a developer can find out from the database alone: failed rows carry an error code, a short
    reason, a redacted detail and a request id, and the example queries in the runbook return them; for a failure inside the
    service, searching its logs for that request id finds a traceback that contains no message text.
-11. Backend tests, frontend tests, AI service tests and both type-checks pass; no automated test calls Gemini.
+11. Backend tests, frontend tests, AI service tests and both type-checks pass; no automated test calls the model.
 
 ## Decided since the first draft
 
-- Model: `gemini-3.5-flash`. Python: 3.14 (checked, works). Sending messages to Google: fine. Gemini free-tier limits and the
+- Model: first `gemini-3.5-flash` on Google; **changed to `qwen/qwen3.8-27b` on Groq** (your request, v8). Python: 3.14 (checked, works). Sending messages to Google was confirmed fine; Groq is now the recipient. Free-tier limits and the
   "AI unavailable" message: fine.
 - The chat record shows **who requested it and from where, not what was asked**. It is **kept for the future** and is **for developers only** (read in the database, no product screen). Because the system is stateless, the **backend writes it to the database**; the AI service does not write
   files.

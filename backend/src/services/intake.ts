@@ -7,7 +7,7 @@ import { ApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 
 /**
- * Chat draft (docs/spec-ai-chat-draft.md): one message in, one draft out, nothing saved except the developer record in
+ * Chat draft (docs/spec-ai-request-router.md): one message in, one draft out, nothing saved except the developer record in
  * `chat_drafts`. The AI service only suggests; every value is checked here before it goes back to the browser.
  */
 

@@ -10,14 +10,17 @@ import type { RequestSummary } from "@/lib/types";
 interface Props {
   /** As the API returns them: newest first. */
   requests: RequestSummary[] | undefined;
+  /** A request being shown as the current turn, so it is not also listed here. */
+  exclude?: string;
   loading: boolean;
   failed: boolean;
   onNavigate: () => void;
 }
 
 /** The person's earlier requests made through the assistant, as pairs of bubbles, oldest first so the newest is nearest the message box. */
-export function PastRequests({ requests, loading, failed, onNavigate }: Props) {
-  if (loading && !requests) {
+export function PastRequests({ requests: all, exclude, loading, failed, onNavigate }: Props) {
+  const requests = all?.filter((r) => r.id !== exclude);
+  if (loading && !all) {
     return (
       <div aria-label="Loading your earlier requests" className="space-y-2">
         <div className="flex justify-end">
@@ -27,7 +30,7 @@ export function PastRequests({ requests, loading, failed, onNavigate }: Props) {
       </div>
     );
   }
-  if (failed && !requests) {
+  if (failed && !all) {
     return <p className="text-center text-xs text-muted-foreground">Couldn&apos;t load your earlier requests.</p>;
   }
   if (!requests || requests.length === 0) return null;

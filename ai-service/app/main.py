@@ -5,7 +5,7 @@ import uuid
 import warnings
 from contextlib import asynccontextmanager
 
-# Google's SDK prints SyntaxWarnings for some docstrings when it is first imported. They are noise, not problems.
+# The model SDKs print SyntaxWarnings for some docstrings when it is first imported. They are noise, not problems.
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 from fastapi import Depends, FastAPI, Request  # noqa: E402
@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
                 text="DEBUG_LOG_PROMPTS is on: prompts and raw model replies, which include employees' messages, will be "
                 "logged. Never use this in production.",
             )
-        log_event("startup", model=settings.gemini_model, production=settings.is_production)
+        log_event("startup", model=settings.groq_model, production=settings.is_production)
         yield
 
     app = FastAPI(
@@ -102,7 +102,7 @@ def create_app() -> FastAPI:
     async def draft(body: DraftRequest, model=Depends(get_model)):
         settings = get_settings()
         # Never the message text: only its length, the outcome and the numbers.
-        log_event("draft.start", model=settings.gemini_model, messageChars=len(body.message), categories=len(body.categories))
+        log_event("draft.start", model=settings.groq_model, messageChars=len(body.message), categories=len(body.categories))
         try:
             result = await draft_request(body, model, settings)
         except DraftFailure as failure:
@@ -116,8 +116,8 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
-        """Public. Says the service is up; it does not call Gemini."""
-        return {"status": "ok", "model": get_settings().gemini_model}
+        """Public. Says the service is up; it does not call the model."""
+        return {"status": "ok", "model": get_settings().groq_model}
 
     return app
 

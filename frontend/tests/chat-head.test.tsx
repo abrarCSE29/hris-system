@@ -134,7 +134,7 @@ describe("Chat head", () => {
 });
 
 describe("The draft card", () => {
-  it("shows every field filled in, each marked AI suggested, with the reason", async () => {
+  it("shows every field filled in, each marked AI suggested, and no reasoning", async () => {
     render(<ChatHead firstName="Nadia" />);
     await draftIt();
     const card = screen.getByRole("form", { name: "Draft request" });
@@ -144,7 +144,7 @@ describe("The draft card", () => {
     expect(within(card).getByRole("combobox", { name: "Priority" }).textContent).toContain("Urgent");
     expect(within(card).getByRole("combobox", { name: "Department" }).textContent).toContain("IT Operations");
     expect(within(card).getAllByText("AI suggested")).toHaveLength(5);
-    expect(screen.getByText("Hardware fault with a possible safety risk.")).toBeTruthy();
+    expect(screen.queryByText("Hardware fault with a possible safety risk.")).toBeNull();
     expect(screen.queryByText(/I'm not sure about this/)).toBeNull();
     expect(screen.getByText("my laptop is firing up")).toBeTruthy(); // their own message, for context
   });
@@ -389,6 +389,18 @@ describe("Earlier requests in the thread", () => {
     const order = [...log.querySelectorAll("[data-from]")].map((n) => n.textContent ?? "");
     expect(order.findIndex((t) => t === "Earlier one")).toBeLessThan(order.findIndex((t) => t === "my laptop is firing up"));
     expect(screen.queryByLabelText("Your message")).toBeNull(); // the draft replaces the composer
+  });
+
+  it("shows a just-submitted request once, as the current turn, even after the list has refreshed to include it", async () => {
+    render(<ChatHead firstName="Nadia" />);
+    await draftIt("my laptop is firing up");
+    // The list refetches after a submit and now contains the new request.
+    historyState.data = { data: [past({ id: "r-1", reference: "SR-1042", title: "Laptop overheating" })] };
+    await userEvent.click(screen.getByRole("button", { name: "Submit request" }));
+    expect(screen.getAllByText("SR-1042")).toHaveLength(1);
+    expect(screen.queryByRole("region", { name: "Your earlier requests" })).toBeNull();
+    expect(screen.getByText("my laptop is firing up")).toBeTruthy();
+    expect(screen.getByText(/was sent to IT Operations/)).toBeTruthy();
   });
 
   it("sends the request as a chat request so it joins the thread next time", async () => {

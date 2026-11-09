@@ -1,5 +1,5 @@
 """
-Turns a message into a request draft with Gemini (LangChain structured output).
+Turns a message into a request draft with a Groq-hosted model (LangChain structured output).
 
 The model's answer is never trusted: its codes are checked against the lists the backend sent, and an invalid answer gets
 one retry. Failures become a `DraftFailure` that carries a code, an HTTP status and a redacted cause. Nothing here logs or
@@ -13,7 +13,7 @@ from typing import Any, Protocol
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from pydantic import ValidationError
 
 from app.config import Settings
@@ -39,7 +39,7 @@ class _Invalid(Exception):
     reason: str  # always written by us, never model or user text
 
 
-class _GeminiModel:
+class _GroqModel:
     """The real model. It is built on the first call, so a missing key becomes a clean error inside the draft, not a crash."""
 
     def __init__(self, settings: Settings) -> None:
@@ -49,22 +49,22 @@ class _GeminiModel:
     async def ainvoke(self, messages: list[Any]) -> Draft:
         if self._chain is None:
             s = self._settings
-            if not s.google_api_key:
-                raise DraftFailure(502, "MODEL_NOT_CONFIGURED", "GOOGLE_API_KEY is not set")
-            llm = ChatGoogleGenerativeAI(
-                model=s.gemini_model,
-                api_key=s.google_api_key,
+            if not s.groq_api_key:
+                raise DraftFailure(502, "MODEL_NOT_CONFIGURED", "GROQ_API_KEY is not set")
+            llm = ChatGroq(
+                model=s.groq_model,
+                api_key=s.groq_api_key,
                 temperature=0,
                 timeout=s.llm_timeout_seconds,
                 max_retries=0,  # no hidden retries: we count and bound our own
             )
-            self._chain = llm.with_structured_output(Draft, method="json_schema")  # type: ignore[assignment]
+            self._chain = llm.with_structured_output(Draft, method="function_calling")  # type: ignore[assignment]
         return await self._chain.ainvoke(messages)  # type: ignore[union-attr]
 
 
 def build_model(settings: Settings) -> StructuredModel:
-    """Gemini through LangChain, answering in the shape of `Draft`."""
-    return _GeminiModel(settings)
+    """A Groq-hosted model through LangChain, answering in the shape of `Draft`."""
+    return _GroqModel(settings)
 
 
 def build_messages(req: DraftRequest) -> list[Any]:
@@ -81,7 +81,7 @@ def _check(draft: Draft, req: DraftRequest) -> None:
 
 def _classify(exc: BaseException) -> DraftFailure:
     name = type(exc).__name__
-    code = getattr(exc, "code", None)
+    code = getattr(exc, "status_code", None) or getattr(exc, "code", None)  # Groq's SDK uses status_code
     if isinstance(exc, TimeoutError) or "Timeout" in name or "DeadlineExceeded" in name or code in (408, 504):
         return DraftFailure(504, "TIMEOUT", "the model did not answer in time", exc)
     if code == 429 or "ResourceExhausted" in name or "RateLimit" in name:
@@ -133,7 +133,7 @@ async def draft_request(req: DraftRequest, model: StructuredModel, settings: Set
             confidence=draft.confidence,
             low_confidence=draft.confidence < settings.confidence_threshold,
             reasoning=draft.reasoning.strip(),
-            model=settings.gemini_model,
+            model=settings.groq_model,
             latency_ms=latency,
             attempts=attempt,
         )
