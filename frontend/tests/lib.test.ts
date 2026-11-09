@@ -34,6 +34,13 @@ describe("api client", () => {
     stubFetch(204);
     expect(await api("/auth/logout", { method: "POST" })).toBeUndefined();
   });
+  it("keeps the request id from the error envelope, so a user can quote it when reporting a problem", async () => {
+    stubFetch(500, { error: { code: "INTERNAL", message: "Internal server error", requestId: "7c1e5a52-0000-4000-8000-000000000001" } });
+    await expect(api("/x")).rejects.toMatchObject({ status: 500, requestId: "7c1e5a52-0000-4000-8000-000000000001" });
+    stubFetch(404, { error: { code: "NOT_FOUND", message: "gone" } });
+    expect(((await api("/x").catch((e) => e)) as ApiClientError).requestId).toBeUndefined();
+  });
+
   it("throws ApiClientError carrying the backend error envelope", async () => {
     stubFetch(422, { error: { code: "VALIDATION_FAILED", message: "bad", details: [1] } });
     await expect(api("/x")).rejects.toMatchObject({ status: 422, code: "VALIDATION_FAILED", message: "bad", details: [1] });

@@ -130,6 +130,32 @@ describe("POST /requests/chat-draft: success", () => {
     expect(new Set(used).size).toBe(2);
   });
 
+  it("uses the request's own id everywhere: the x-request-id header, the call to the AI service and the record", async () => {
+    fetchMock.mockResolvedValue(reply(200, aiOk()));
+    const res = await call(ok);
+    const [row] = await rows();
+    expect(res.headers.get("x-request-id")).toBe(row.requestId);
+    expect(fetchMock.mock.calls[0][1].headers["x-request-id"]).toBe(row.requestId);
+  });
+
+  it("keeps a valid x-request-id from the caller, and ignores an invalid one", async () => {
+    fetchMock.mockResolvedValue(reply(200, aiOk()));
+    const mine = crypto.randomUUID();
+    const res = await call(ok, userId, { "x-request-id": mine });
+    expect(res.headers.get("x-request-id")).toBe(mine);
+    expect((await rows())[0].requestId).toBe(mine);
+    expect(fetchMock.mock.calls[0][1].headers["x-request-id"]).toBe(mine);
+    await call(ok, userId, { "x-request-id": "not-a-uuid" });
+    expect((await rows())[1].requestId).not.toBe("not-a-uuid");
+  });
+
+  it("returns the same id in the 503 body and the header when the assistant is down", async () => {
+    fetchMock.mockRejectedValue(unreachable());
+    const res = await call(ok);
+    expect((await json(res)).error.details.requestId).toBe(res.headers.get("x-request-id"));
+    expect((await rows())[0].requestId).toBe(res.headers.get("x-request-id"));
+  });
+
   it("takes the person from the session, never from the body", async () => {
     fetchMock.mockResolvedValue(reply(200, aiOk()));
     expect((await call({ ...ok, userId: ids.personas.hrAdmin })).status).toBe(422);
@@ -247,17 +273,24 @@ describe("POST /requests/chat-draft: every failure is a 503 and a record with it
 describe("the record never blocks the draft", () => {
   it("still returns the draft when the record cannot be written", async () => {
     fetchMock.mockResolvedValue(reply(200, aiOk()));
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const spy = vi.spyOn(prisma.chatDraft, "create").mockRejectedValue(new Error("db down"));
-    const res = await call(ok);
+    const written: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation(((c: string | Uint8Array) => (written.push(String(c)), true)) as never);
+    const spy = vi.spyOn(prisma.chatDraft, "create").mockRejectedValue(new Error("db down for " + SECRET));
+    const res = await call({ ...ok, message: SECRET });
     expect(spy).toHaveBeenCalled();
     expect(res.status).toBe(200);
     expect((await json(res)).title).toBe("Laptop overheating");
+    // The failure is logged as one line that names the request, and carries neither the message text nor the error's own text.
+    const lines = written.join("").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    const failed = lines.filter((l) => l.event === "chat_drafts.write_failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({ level: "error", errorName: "Error", requestId: res.headers.get("x-request-id") });
+    expect(written.join("")).not.toContain(SECRET);
   });
 
   it("still answers 503 (not 500) when the record cannot be written on a failure", async () => {
     fetchMock.mockRejectedValue(unreachable());
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     vi.spyOn(prisma.chatDraft, "create").mockRejectedValue(new Error("db down"));
     expect((await call(ok)).status).toBe(503);
   });

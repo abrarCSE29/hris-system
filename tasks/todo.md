@@ -586,9 +586,10 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 40: Replace `console.error`; share the request id
 **Description:** Both existing `console.error` calls use the logger; the AI call uses the request's id; the frontend error type gains optional `requestId`.
 **Acceptance criteria:**
-- [ ] No `console.error` remains in `backend/src`
-- [ ] A chat draft's `chat_drafts.request_id` equals the response's `x-request-id`
-- [ ] Backend and frontend tests and `tsc` pass
+- [x] No `console.error` remains in `backend/src`
+- [x] A chat draft's `chat_drafts.request_id` equals the response's `x-request-id`
+- [x] Backend and frontend tests and `tsc` pass
+**Done:** `createChatDraft` takes the request's id (the route passes `ctx.requestId`), so the `x-request-id` header, the AI call and `chat_drafts.request_id` are one id; the write-failure `console.error` is now a `chat_drafts.write_failed` log line (name and Prisma code only); `ApiClientError` has `requestId`. Backend 733, frontend 147 tests pass.
 **Dependencies:** T38
 **Files:** `backend/src/services/intake.ts`, `backend/src/lib/ai-client.ts`, `frontend/lib/types.ts`
 **Scope:** S

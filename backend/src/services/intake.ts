@@ -4,6 +4,7 @@ import type { AiErrorCode, ChatDraftOutcome, Prisma, RequestCategoryCode } from 
 import { AiCallError, requestDraft, type AiDraft } from "@/lib/ai-client";
 import type { AuthUser } from "@/lib/auth";
 import { ApiError } from "@/lib/errors";
+import { log } from "@/lib/logger";
 import type { Origin } from "@/lib/origin";
 import { prisma } from "@/lib/prisma";
 
@@ -45,12 +46,18 @@ async function record(row: Prisma.ChatDraftUncheckedCreateInput): Promise<void> 
   try {
     await prisma.chatDraft.create({ data: row });
   } catch (e) {
-    console.error("chat_drafts: could not write the record", (e as Error)?.name, row.requestId);
+    // Name and code only: the error's own text could echo a value, and the message text must never be logged.
+    const code = (e as { code?: unknown })?.code;
+    log("error", "chat_drafts.write_failed", {
+      requestId: row.requestId,
+      errorName: (e as Error)?.name,
+      errorCode: typeof code === "string" && /^P\d{4}$/.test(code) ? code : undefined,
+    });
   }
 }
 
-export async function createChatDraft(actor: AuthUser, input: z.infer<typeof chatDraftBody>, origin: ChatDraftOrigin) {
-  const requestId = randomUUID();
+/** `requestId` is the HTTP request's own id (the `x-request-id` header), so one id finds the log lines, this record and the AI service's lines. */
+export async function createChatDraft(actor: AuthUser, input: z.infer<typeof chatDraftBody>, origin: ChatDraftOrigin, requestId: string = randomUUID()) {
   const base = {
     userId: actor.id,
     page: input.page,
