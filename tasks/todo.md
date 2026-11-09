@@ -613,11 +613,12 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 42: Endpoint, scope, period and the per-person rows
 **Description:** `GET /dashboard/team?days=` for Managers: `getTeamDashboard(manager, days, today)` in `backend/src/services/team-dashboard.ts`. Team = direct reports. Returns `asOf`, `periodDays`, `periodStart`, `teamSize` and one `people` row per report (name, job title, every count `0` for now). Fixes the response shape.
 **Acceptance criteria:**
-- [ ] Manager `200`; HR Admin, Employee `403`; no cookie `401`
-- [ ] `days` is 7, 30 or 90 (default 30); anything else `422`; `periodStart` is `days - 1` days before today (Asia/Dhaka)
-- [ ] Only the manager's direct reports appear, any status, sorted by name; another manager's reports and the manager themself never do; no reports → `teamSize: 0`, empty list
+- [x] Manager `200`; HR Admin, Employee `403`; no cookie `401`
+- [x] `days` is 7, 30 or 90 (default 30); anything else `422`; `periodStart` is `days - 1` days before today (Asia/Dhaka)
+- [x] Only the manager's direct reports appear, any status, sorted by name; another manager's reports and the manager themself never do; no reports → `teamSize: 0`, empty list
 **Verification:**
-- [ ] `npm test` in `backend/`; tests first; mutation check: drop the `managerId` filter
+- [x] `npm test` in `backend/`; tests first; mutation checks: drop the `managerId` filter, period start off by one, accept 14 days, include the manager themself (each failed a test)
+**Done:** `GET /dashboard/team` (MANAGER only) returns `asOf`, `periodDays`, `periodStart`, `teamSize`, `requests`, `tasks`, `newHires` and one `people` row per direct report; the counts are zeros until T43–T45 fill them. Backend 907 tests pass.
 **Files:** `backend/src/services/team-dashboard.ts`, `backend/app/api/v1/dashboard/team/route.ts`, `backend/tests/team-dashboard.test.ts`
 **Scope:** S
 
