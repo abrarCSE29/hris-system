@@ -4,6 +4,7 @@ import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react
 import { useState } from "react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { ServiceUnavailableDialog } from "@/components/service-unavailable-dialog";
 import { ApiClientError } from "@/lib/api";
 
 declare module "@tanstack/react-query" {
@@ -39,6 +40,8 @@ export function createQueryClient() {
         if (text) toast.success(text);
       },
       onError: (error, _variables, _context, mutation) => {
+        // The "Service Unavailable" window is already showing; a toast on top would repeat it.
+        if (error instanceof ApiClientError && error.code === "SERVICE_UNAVAILABLE") return;
         // A 401 on any other action is already sending the person to the sign-in page.
         if (error instanceof ApiClientError && error.status === 401 && !mutation.meta?.failure) return;
         toast.error(mutation.meta?.failure?.(error) ?? failureMessage(error));
@@ -60,6 +63,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={client}>
       {children}
       <Toaster position="top-right" />
+      <ServiceUnavailableDialog />
     </QueryClientProvider>
   );
 }

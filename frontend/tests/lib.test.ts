@@ -45,11 +45,16 @@ describe("api client", () => {
     stubFetch(422, { error: { code: "VALIDATION_FAILED", message: "bad", details: [1] } });
     await expect(api("/x")).rejects.toMatchObject({ status: 422, code: "VALIDATION_FAILED", message: "bad", details: [1] });
   });
-  it("falls back to a generic error when the body is not JSON", async () => {
-    stubFetch(502);
+  it("falls back to a generic error when a 4xx body is not JSON", async () => {
+    stubFetch(400);
     const err = await api("/x").catch((e) => e);
     expect(err).toBeInstanceOf(ApiClientError);
-    expect(err).toMatchObject({ status: 502, code: "UNKNOWN" });
+    expect(err).toMatchObject({ status: 400, code: "UNKNOWN" });
+  });
+  it("reports a 502 (backend down behind the proxy) as SERVICE_UNAVAILABLE", async () => {
+    stubFetch(502);
+    const err = await api("/x").catch((e) => e);
+    expect(err).toMatchObject({ status: 503, code: "SERVICE_UNAVAILABLE" });
   });
 });
 

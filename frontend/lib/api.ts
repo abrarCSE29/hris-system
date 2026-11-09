@@ -1,3 +1,5 @@
+import { setServiceUnavailable } from "@/lib/service-status";
+
 export class ApiClientError extends Error {
   constructor(
     readonly status: number,
@@ -21,15 +23,31 @@ interface Options {
  * Throws ApiClientError for non-2xx responses, using the backend's error envelope.
  */
 export async function api<T>(path: string, { method = "GET", body }: Options = {}): Promise<T> {
-  const res = await fetch(`/api/v1${path}`, {
-    method,
-    credentials: "same-origin",
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}`, {
+      method,
+      credentials: "same-origin",
+      headers: body === undefined ? undefined : { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    setServiceUnavailable(true);
+    throw new ApiClientError(503, "SERVICE_UNAVAILABLE", "Service unavailable. Please try again later.");
+  }
 
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) {
+    setServiceUnavailable(false);
+    return undefined as T;
+  }
   const data = await res.json().catch(() => null);
+
+  // The backend is down when the proxy answers 502/503/504, or a 5xx that is not the backend's own error envelope.
+  if (res.status === 502 || res.status === 503 || res.status === 504 || (res.status >= 500 && !data?.error)) {
+    setServiceUnavailable(true);
+    throw new ApiClientError(503, "SERVICE_UNAVAILABLE", "Service unavailable. Please try again later.");
+  }
+  setServiceUnavailable(false);
 
   if (!res.ok) {
     // Session missing or expired: send the user to the login page (but not while logging in).
