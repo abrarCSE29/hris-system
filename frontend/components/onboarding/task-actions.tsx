@@ -23,7 +23,7 @@ export function TaskActions({ task }: { task: Pick<OnboardingTask, "id" | "allow
   const run = (action: TaskAction) => transition.mutate({ taskId: task.id, action });
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 sm:flex sm:flex-col sm:items-end">
       <div className="flex gap-2">
         {actions.includes("start") && (
           <Button size="sm" variant="outline" disabled={transition.isPending} onClick={() => run("start")}>
@@ -43,7 +43,7 @@ export function TaskActions({ task }: { task: Pick<OnboardingTask, "id" | "allow
       </div>
       {canAssign && choosing && (
         <form
-          className="flex items-center gap-2"
+          className="flex w-full flex-col gap-2 sm:w-72"
           onSubmit={(e) => {
             e.preventDefault();
             assign.mutate({ taskId: task.id, assigneeId }, { onSuccess: () => { setChoosing(false); setAssigneeId(""); } });
@@ -58,7 +58,7 @@ export function TaskActions({ task }: { task: Pick<OnboardingTask, "id" | "allow
             placeholder={assignable.isPending ? "Loading…" : "Choose a person…"}
             options={(assignable.data?.data ?? []).filter((u) => u.id !== task.assignee?.id).map((u) => ({ value: u.id, label: `${u.fullName} · ${u.jobTitle}` }))}
           />
-          <Button type="submit" size="sm" disabled={!assigneeId || assign.isPending}>
+          <Button type="submit" size="sm" className="self-end" disabled={!assigneeId || assign.isPending}>
             {assign.isPending ? "Saving…" : "Save"}
           </Button>
         </form>
