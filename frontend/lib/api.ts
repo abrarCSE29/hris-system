@@ -4,6 +4,8 @@ export class ApiClientError extends Error {
     readonly code: string,
     message: string,
     readonly details?: unknown,
+    /** The backend's id for this request (also its `x-request-id` header); quote it when reporting a problem. */
+    readonly requestId?: string,
   ) {
     super(message);
   }
@@ -35,7 +37,7 @@ export async function api<T>(path: string, { method = "GET", body }: Options = {
       window.location.assign("/login");
     }
     const err = data?.error;
-    throw new ApiClientError(res.status, err?.code ?? "UNKNOWN", err?.message ?? `Request failed (${res.status})`, err?.details);
+    throw new ApiClientError(res.status, err?.code ?? "UNKNOWN", err?.message ?? `Request failed (${res.status})`, err?.details, err?.requestId);
   }
   return data as T;
 }

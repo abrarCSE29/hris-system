@@ -1,5 +1,5 @@
 import { SignJWT } from "jose";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as login } from "../app/api/v1/auth/login/route";
 import { POST as logout } from "../app/api/v1/auth/logout/route";
 import { GET as me } from "../app/api/v1/auth/me/route";
@@ -66,7 +66,13 @@ describe("POST /auth/login", () => {
     const unknown = await login(post({ email: "ghost@example.com", password: "nope" }));
     expect(wrong.status).toBe(401);
     expect(unknown.status).toBe(401);
-    expect(await wrong.json()).toEqual(await unknown.json());
+    // Same answer for both; only the per-request id differs.
+    const strip = async (r: Response) => {
+      const body = (await r.json()) as { error: Record<string, unknown> };
+      delete body.error.requestId;
+      return body;
+    };
+    expect(await strip(wrong)).toEqual(await strip(unknown));
     expect(wrong.headers.get("set-cookie")).toBeNull();
   });
 
@@ -145,10 +151,9 @@ describe("GET /auth/me and withAuth", () => {
     const boom = withAuth(() => {
       throw new Error("secret internals");
     });
-    const origError = console.error;
-    console.error = () => {};
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const res = await boom(withCookie(await signSession(user.id)));
-    console.error = origError;
+    write.mockRestore();
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain("secret internals");
   });

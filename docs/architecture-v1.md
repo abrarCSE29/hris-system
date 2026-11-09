@@ -112,8 +112,9 @@ both modules. No user, team or department data is duplicated.
 
 1. The browser calls `/api/v1/...` on the frontend's domain; the frontend's rewrite forwards it to
    the backend. The browser sees one origin, so the session cookie works without CORS setup.
-2. `withAuth()` verifies the JWT, loads the user from the database (so role changes apply
-   immediately) and checks the endpoint's allowed roles.
+2. `withAuth()` (built on `withRequest()`, which also wraps the public routes) gives the request an id, verifies the
+   JWT, loads the user from the database (so role changes apply immediately), checks the endpoint's allowed roles
+   and, when the response is ready, writes one log line (§4.8).
 3. The handler queries through `policy.ts`, which adds the user's row scope. Rows outside the scope
    return `404`.
 4. Status changes go through `state-machine.ts`, which checks the current state and the actor, then
@@ -403,7 +404,9 @@ generated Prisma migration is reviewed before it is applied, so Prisma does not 
   and `GET /health`.
 - **Format:** JSON; request bodies validated with zod; dates as `YYYY-MM-DD`.
 - **Lists:** `?page=1&pageSize=20` → `{ data, page, pageSize, total }`.
-- **Errors:** `{ "error": { "code": "INVALID_TRANSITION", "message": "..." } }`
+- **Errors:** `{ "error": { "code": "INVALID_TRANSITION", "message": "...", "requestId": "..." } }`
+- **Request id:** every response, including errors, carries an `x-request-id` header (also `error.requestId` in an error
+  body). A caller may send its own `x-request-id`; it is kept only if it is a UUID. Quote the id when reporting a problem (§4.8).
 
 | Status | Meaning |
 |---|---|
@@ -490,6 +493,48 @@ An HR Admin view of how the workforce is spread across departments.
 - Page: **Departments** (`/departments`, HR Admin only, in the sidebar). One row per department with the head,
   headcount and its share of the company, and the split by country, status and role. Selecting a department opens
   **People** filtered to it (`/people?departmentId=…`). Managers and Employees get `403` from the API and no nav item.
+
+---
+
+### 4.8 System logs *(added after v1 sign-off)*
+
+The backend writes structured logs so that a failed request can be traced: when it happened, on which route, for which
+user, and why. Spec: `docs/spec-system-logs.md`. Logs go to stdout and stderr only; nothing is stored in the database
+or in a file.
+
+**Format.** One JSON object per line. `debug` and `info` go to stdout; `warn` and `error` go to stderr, so a host can flag
+errors. While developing (`NODE_ENV=development`) a short coloured line is printed instead (errors red, warnings yellow);
+production and tests always print JSON. `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; default `info`) sets the lowest level written.
+
+**Lines written** (every line has `ts`, `level`, `event`):
+
+| Event | Level | When | Main fields |
+|---|---|---|---|
+| `http.request` | info (2xx, 3xx), warn (4xx), error (5xx) | Every request, except `GET /health` | `requestId, method, route, status, ms, userId` |
+| `http.error` | error | An unexpected error (the 500s); the response body stays generic | `requestId, method, route, userId, errorName, errorCode, message, stack` (message and stack redacted) |
+| `auth.login` | info | Successful sign-in | `requestId, route, userId, ip, userAgent` |
+| `auth.login_failed` | warn | Wrong password or unknown email (the same event for both) | `requestId, route, ip, userAgent` |
+| `auth.logout` | info | Sign-out | `requestId, route, userId, ip, userAgent` |
+| `auth.session_invalid` | warn | A 401 on a request that sent a cookie (expired, forged, or its user is gone) | `requestId, route, ip, userAgent` |
+| `auth.forbidden` | warn | A 403 | `requestId, route, userId, ip, userAgent` |
+| `chat_drafts.write_failed` | error | The developer record of an AI draft could not be saved (the draft is still returned) | `requestId, errorName, errorCode` |
+
+`route` is the route pattern (`/api/v1/requests/:id/comments`), never the real URL, so ids and query strings stay out.
+`ip` is the first forwarded address (cut to 64 characters) and `userAgent` is cut to 300; both are left out when not sent.
+
+**Never logged:** request or response bodies, headers, cookies, the session token, passwords or hashes, the attempted
+email on a failed login, API keys, or the text of an AI chat message. Text taken from an error passes through `redact`
+first, which removes JWTs, bearer values, bcrypt hashes, API-key shapes, `key=`/`token=`/`password=` values and email
+addresses, and cuts it to a length limit. A logging problem never changes a response.
+
+**Finding a request by its id.** The id is in the `x-request-id` response header (browser developer tools, Network tab)
+and in the `error.requestId` of an error body. Search for it in the backend's output, for example
+`npm run dev 2>&1 | grep <id>` locally or the log search on the host. For an AI draft the same id is also the
+`chat_drafts.request_id` column and the id in the AI service's own log lines, so one id finds all three.
+
+**Retention.** Logs last as long as the host keeps them (short on Vercel). This is accepted for now; a log drain to an
+outside service can read the same JSON later without code changes. An audit trail of who changed which HR data is not part
+of this and has not been built.
 
 ---
 
@@ -720,5 +765,6 @@ hris-platform/
 | backend | `DATABASE_URL` | Supabase pooler connection (transaction mode) |
 | backend | `DIRECT_URL` | Supabase direct connection for migrations |
 | backend | `JWT_SECRET` | Session signing key |
+| backend | `LOG_LEVEL` | Optional. Lowest log level written: `debug`, `info` (default), `warn`, `error` |
 
 No secrets are committed; each service has an `.env.example`.

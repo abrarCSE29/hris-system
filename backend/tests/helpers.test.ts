@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ApiError, errorResponse, toErrorResponse } from "@/lib/errors";
 import { parse, readJson } from "@/lib/validation";
@@ -7,7 +7,7 @@ import { GET as health } from "../app/api/v1/health/route";
 
 describe("health", () => {
   it("returns ok", async () => {
-    const res = health();
+    const res = await health(new Request("http://x/api/v1/health"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: "ok" });
   });
@@ -27,10 +27,9 @@ describe("errors", () => {
   });
 
   it("hides unknown errors behind a generic 500", async () => {
-    const spy = console.error;
-    console.error = () => {};
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const res = toErrorResponse(new Error("db password leaked"));
-    console.error = spy;
+    write.mockRestore();
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain("leaked");
   });
