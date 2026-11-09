@@ -229,3 +229,22 @@ T37 Logger + redaction ─ T38 withRequest wrapper (request line, request id, 50
 
 **Biggest risk:** leaking personal data or secrets into logs (error text echoes values) and changing responses that tests rely on.
 Mitigation: redaction is its own task with tests first; a "never logged" test is mutation-checked; every existing route test must pass unchanged.
+
+## Manager dashboard: team performance (spec: `docs/spec-manager-dashboard.md`, approved v3)
+
+A `/team` page for Managers and one endpoint, `GET /dashboard/team?days=7|30|90`: how much work the direct reports hold, what they
+finished in the period (requests resolved, time to resolve, tasks on time or late), their new hires' progress, and a per-person table.
+Computed live; no schema change, no migration, no new dependency. Managers land on it after login.
+
+```
+T42 Endpoint, scope, period, people rows ─ T43 Request measures ─ T44 Task measures ─ T45 New hires + consistency
+                      │
+                      └─ T46 Frontend: nav, landing, hook, page with cards and period picker ─ T47 Table, chart, new hires ─ T48 Docs + checkpoint
+```
+
+T43 and T44 add fields to the same service, so they run in order. T46 can start once T42 has fixed the response shape, but the cards only fill in after T43–T45.
+
+**Biggest risks:**
+- *Showing the wrong people's numbers.* Every query filters on the signed-in manager's direct reports. Tests put a second manager's team, the manager's own work and unassigned work in the data and assert none of it appears; mutation check: drop the filter.
+- *Period and timezone edges.* "Last N days" and "on time" are Asia/Dhaka calendar days, inclusive. Tests use fixed timestamps on both sides of each edge and hand-computed expected values.
+- *Counting the same work differently in totals and rows.* The totals are summed from the same per-person numbers, with a test that they agree.

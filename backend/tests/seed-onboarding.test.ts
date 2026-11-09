@@ -147,6 +147,26 @@ describe("onboarding seed: progress is realistic and consistent", () => {
     for (const t of completed) expect(t.completedById).toBe(t.assigneeId);
   });
 
+  it("completes most tasks on time and some late, so the on-time / late split has both", async () => {
+    const dhaka = (d: Date) => new Date(d.getTime() + 6 * 3_600_000).toISOString().slice(0, 10);
+    const completed = (await allTasks()).filter((t) => t.status === "COMPLETED");
+    const late = completed.filter((t) => dhaka(t.completedAt!) > toIsoDate(t.dueDate));
+    expect(late.length).toBeGreaterThanOrEqual(3);
+    expect(completed.length - late.length).toBeGreaterThanOrEqual(10);
+    expect(late.length).toBeLessThan(completed.length / 2);
+  });
+
+  it("never asks a new hire to work on their own checklist", async () => {
+    for (const t of await allTasks()) if (t.assigneeId) expect(t.assigneeId, t.title).not.toBe(t.instance.employeeId);
+  });
+
+  it("includes a new hire in IT Operations, so that Manager has someone to look after", async () => {
+    const hires = await db.user.findMany({ where: { id: { in: base.newHireIds } }, include: { department: true } });
+    expect(hires.some((h) => h.department.code === "ITOPS")).toBe(true);
+    // …and the new hires report to six or more different Managers' departments overall.
+    expect(new Set(hires.map((h) => h.department.code)).size).toBeGreaterThanOrEqual(5);
+  });
+
   it("leaves every checklist unfinished", async () => {
     for (const inst of await db.onboardingInstance.findMany({ include: { tasks: true } })) {
       expect(inst.tasks.some((t) => t.status !== "COMPLETED")).toBe(true);

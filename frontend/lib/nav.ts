@@ -1,4 +1,4 @@
-import { Building2, ClipboardCheck, LayoutDashboard, LayoutTemplate, LifeBuoy, ListChecks, UserRoundCheck, Users, type LucideIcon } from "lucide-react";
+import { Building2, ClipboardCheck, Gauge, LayoutDashboard, LayoutTemplate, LifeBuoy, ListChecks, UserRoundCheck, Users, type LucideIcon } from "lucide-react";
 import type { Role } from "./types";
 
 export interface NavItem {
@@ -14,6 +14,7 @@ export interface NavItem {
 // Items are added here as their pages are built (People, Onboarding, … in later tasks).
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["HR_ADMIN"] },
+  { href: "/team", label: "Team dashboard", icon: Gauge, roles: ["MANAGER"] },
   { href: "/requests", label: "Requests", icon: LifeBuoy },
   { href: "/people", label: "People", icon: Users, roles: ["MANAGER", "HR_ADMIN"] },
   { href: "/departments", label: "Departments", icon: Building2, roles: ["HR_ADMIN"] },
@@ -34,4 +35,4 @@ export function activeHref(items: NavItem[], pathname: string): string | undefin
     .sort((a, b) => b.length - a.length)[0];
 }
 
-export const homeForRole = (role: Role) => (role === "HR_ADMIN" ? "/dashboard" : "/requests");
+export const homeForRole = (role: Role) => (role === "HR_ADMIN" ? "/dashboard" : role === "MANAGER" ? "/team" : "/requests");
