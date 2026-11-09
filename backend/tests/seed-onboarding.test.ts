@@ -90,11 +90,21 @@ describe("onboarding seed: new hires", () => {
     }
   });
 
-  it("assigns manager tasks to the hire's manager and department tasks to no individual", async () => {
+  it("assigns manager tasks to the hire's manager, and department tasks to a member of that department or to nobody yet", async () => {
+    let assigned = 0, waiting = 0;
     for (const t of await allTasks()) {
-      if (t.ownerType === "MANAGER") expect(t.assigneeId).toBe(t.instance.employee.managerId);
-      else { expect(t.assigneeId).toBeNull(); expect(t.ownerDepartmentId).not.toBeNull(); }
+      if (t.ownerType === "MANAGER") { expect(t.assigneeId).toBe(t.instance.employee.managerId); continue; }
+      expect(t.ownerDepartmentId).not.toBeNull();
+      if (t.assigneeId === null) {
+        waiting++;
+        expect(t.status, "started work always has an owner").toBe("NOT_STARTED");
+      } else {
+        assigned++;
+        expect((await db.user.findUniqueOrThrow({ where: { id: t.assigneeId } })).departmentId).toBe(t.ownerDepartmentId);
+      }
     }
+    expect(assigned).toBeGreaterThan(0);
+    expect(waiting).toBeGreaterThan(0); // the head has something to assign
   });
 });
 
@@ -132,12 +142,9 @@ describe("onboarding seed: progress is realistic and consistent", () => {
     }
   });
 
-  it("lets only the right people have completed tasks (owner department or the manager)", async () => {
-    const completed = await db.onboardingTask.findMany({ where: { status: "COMPLETED" }, include: { completedBy: true } });
-    for (const t of completed) {
-      if (t.ownerType === "MANAGER") expect(t.completedById).toBe(t.assigneeId);
-      else expect(t.completedBy!.departmentId).toBe(t.ownerDepartmentId);
-    }
+  it("lets only the assigned person complete a task", async () => {
+    const completed = await db.onboardingTask.findMany({ where: { status: "COMPLETED" } });
+    for (const t of completed) expect(t.completedById).toBe(t.assigneeId);
   });
 
   it("leaves every checklist unfinished", async () => {
@@ -150,6 +157,7 @@ describe("onboarding seed: progress is realistic and consistent", () => {
     const itSupport = await db.user.findUniqueOrThrow({ where: { id: base.personas.itSupport } });
     const itTasks = await db.onboardingTask.count({ where: { ownerDepartmentId: itSupport.departmentId } });
     expect(itTasks).toBeGreaterThanOrEqual(21); // 3 IT tasks for each of 7 hires (more for Engineering)
+    expect(await db.onboardingTask.count({ where: { assigneeId: base.personas.itSupport } })).toBeGreaterThanOrEqual(3); // the IT login has assigned work
     expect(await db.onboardingTask.count({ where: { assigneeId: base.personas.manager } })).toBeGreaterThanOrEqual(3);
     const hire = await db.user.findUniqueOrThrow({ where: { id: base.personas.newHire }, include: { department: true } });
     expect(hire.department.code).toBe("ENG");

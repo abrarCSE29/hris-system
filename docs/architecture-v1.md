@@ -104,8 +104,8 @@ flowchart TB
 
 **Both modules decide "who is responsible?" through `departments`.** A request category routes to a
 handling department; an onboarding task is owned by a department (or by the new hire's manager).
-The same rule, "is this user a member of department X?", decides who can work a request and who can
-work an onboarding task. The same `users.manager_id` reporting line decides what a Manager can see in
+The same rule decides who works both: the **head of the department** sees everything routed to it and
+either handles it or **assigns it to one member** (§5.3, §6.2). The same `users.manager_id` reporting line decides what a Manager can see in
 both modules. No user, team or department data is duplicated.
 
 ### 1.4 How a request flows
@@ -331,7 +331,7 @@ erDiagram
 | `onboarding_templates` | Reusable checklist, created by HR Admin. |
 | `template_tasks` | `CHECK ((owner_type = 'DEPARTMENT') = (owner_department_id IS NOT NULL))`. A dependency must point to a task in the same template, with no cycles; checked when the template is saved. Deadline labels map to offsets: Day 1 = 0, Week 1 = 4, Day 30 = 29. |
 | `onboarding_instances` | Partial unique index: one `ACTIVE` instance per employee. Becomes `COMPLETED` automatically when its last task is completed. |
-| `onboarding_tasks` | A **copy** of the template's tasks made at assignment, with `due_date = start_date + offset_days`. For `MANAGER` tasks, `assignee_id` is set to the new hire's manager. Dependencies point to the copied task in the same instance. |
+| `onboarding_tasks` | A **copy** of the template's tasks made at assignment, with `due_date = start_date + offset_days`. For `MANAGER` tasks, `assignee_id` is set to the new hire's manager. For `DEPARTMENT` tasks, `assignee_id` starts empty: the head of the owning department assigns it to one of its members (§6.2). Dependencies point to the copied task in the same instance. |
 
 **Stored vs calculated status.** Only `NOT_STARTED`, `IN_PROGRESS` and `COMPLETED` are stored.
 **Blocked** and **Overdue** are calculated whenever tasks are read:
@@ -458,11 +458,12 @@ All paths below are relative to `/api/v1`.
 | GET | `/onboarding/templates/:id` | H | — | template with ordered tasks |
 | PUT | `/onboarding/templates/:id` | H | same body as create | updated template; replaces name, description and tasks. Checklists already assigned are copies and are **not** changed; `422` on dependency cycle, `409` on duplicate name |
 | POST | `/onboarding/instances` | H | `{ employeeId, templateId, startDate? }` | `201` checklist with dated tasks; `409` if one is already active |
-| GET | `/onboarding/instances` | M (direct reports), H (all) | `?countryId` | per hire: `{ total, completed, inProgress, notStarted, blocked, overdue, percentComplete }` |
-| GET | `/onboarding/instances/:id` | Hire (own), M (direct report), H | — | checklist with all tasks and calculated status |
+| GET | `/onboarding/instances` | M (direct reports, and checklists with a task owned by the department they head), H (all) | `?countryId` | per hire: `{ total, completed, inProgress, notStarted, blocked, overdue, percentComplete }` |
+| GET | `/onboarding/instances/:id` | Hire (own), M (direct report, or a checklist with a task owned by the department they head), H | — | checklist with all tasks and calculated status |
 | GET | `/onboarding/me` | Any | — | own checklist, or `null` |
-| GET | `/onboarding/tasks` | Any (tasks the user owns) | `?status&overdue` | task queue across all new hires |
+| GET | `/onboarding/tasks` | Any (tasks the user owns) | `?status&overdue&assigned` | task queue across all new hires: tasks assigned to the user, plus, for a department head, every task the department owns. `assigned=false` lists tasks nobody has yet. H sees all (read only) |
 | POST | `/onboarding/tasks/:id/transitions` | Task owner | `{ action: "start" \| "complete" }` | updated task; `409` if blocked |
+| POST | `/onboarding/tasks/:id/assign` | Head of the owning department, H | `{ assigneeId }` | updated task. The assignee must be an active member of the owning department (`422`, path `assigneeId`); `409` on a completed task, a `MANAGER` task, or someone without the right; assigning the person who already has it is `422`. Reassigning an In Progress task sends it back to Not Started |
 
 ### 4.6 Dashboard
 
@@ -544,12 +545,13 @@ of this and has not been built.
 
 | Role | Summary |
 |---|---|
-| **Employee** | Submits requests; sees own requests and requests assigned to them; sees own onboarding checklist; works onboarding tasks owned by their department. |
-| **Manager** | Everything an Employee can do, plus: sees requests from direct reports; as head of their own department (the Manager role is the department head; there is no separate head with extra permissions), sees and assigns requests routed to that department; monitors onboarding of direct reports; works `MANAGER` tasks for their new hires. |
-| **HR Admin** | Sees everything in both modules; creates templates and new hires; assigns checklists; uses the dashboard. |
+| **Employee** | Submits requests; sees own requests and requests assigned to them; sees own onboarding checklist; works the onboarding tasks assigned to them. |
+| **Manager** | Everything an Employee can do, plus: sees requests from direct reports; as head of their own department (the Manager role is the department head; there is no separate head with extra permissions), sees and assigns requests routed to that department; monitors onboarding of direct reports and of any checklist that has a task owned by the department they head (opening it grants no actions); works `MANAGER` tasks for their new hires; as department head, sees every onboarding task the department owns and either does it or assigns it to a member. |
+| **HR Admin** | Sees everything in both modules; creates templates and new hires; assigns checklists; can assign any department's onboarding tasks; uses the dashboard. |
 
-Working requests and onboarding tasks depends on **department membership**, not on a special role: an
-Employee in IT Operations can be assigned IT requests and complete IT onboarding tasks.
+Requests and department onboarding tasks reach a person the same way: the **head of the department** assigns them
+to an active member (department membership decides who can be chosen), so an Employee in IT Operations works the IT
+requests and IT onboarding tasks the IT head gave them.
 
 ### 5.2 Permission matrix
 
@@ -562,9 +564,10 @@ Employee in IT Operations can be assigned IT requests and complete IT onboarding
 | Close request | If requester | If requester | ✅ |
 | Comment | On any request they can view | On any request they can view | ✅ |
 | View own checklist | ✅ | ✅ | ✅ |
-| Onboarding task queue | Own department's tasks | + `MANAGER` tasks for direct reports | All |
-| Start / complete task | If member of owning department | Same + own `MANAGER` tasks | Only tasks they own (their own department's); no override |
-| Onboarding progress | ❌ | Direct reports | All |
+| Onboarding task queue | Tasks assigned to me | + all tasks of the department they head, assigned or not, + `MANAGER` tasks for direct reports | All (read only) |
+| Assign onboarding task | ❌ | Tasks owned by the department they head | ✅ (any department task) |
+| Start / complete task | If assigned to them | If assigned, or the task is their department's, + own `MANAGER` tasks | Only tasks assigned to them; no override |
+| Onboarding progress | ❌ | Direct reports + checklists with a task owned by the department they head | All |
 | Templates, new hires, assign checklist | ❌ | ❌ | ✅ |
 | Dashboard | ❌ | ❌ | ✅ |
 
@@ -638,9 +641,11 @@ stateDiagram-v2
     [*] --> NotStarted: checklist assigned
     NotStarted --> Blocked: dependency not completed (calculated)
     Blocked --> NotStarted: dependency completed (calculated)
-    NotStarted --> InProgress: start (task owner / HR Admin)
-    NotStarted --> Completed: complete (task owner / HR Admin)
-    InProgress --> Completed: complete (task owner / HR Admin)
+    NotStarted --> NotStarted: assign / reassign (head of the owning department / HR Admin)
+    InProgress --> NotStarted: reassign to someone else
+    NotStarted --> InProgress: start (task owner)
+    NotStarted --> Completed: complete (task owner)
+    InProgress --> Completed: complete (task owner)
     Completed --> [*]
 ```
 
@@ -648,11 +653,25 @@ stateDiagram-v2
 |---|---|---|---|---|
 | Not Started | `start` | In Progress | Task owner | Not allowed while blocked (`409`) |
 | Not Started / In Progress | `complete` | Completed | Task owner | Not allowed while blocked (`409`) |
+| Not Started / In Progress | `assign` | Not Started | Head of the owning department; HR Admin | `DEPARTMENT` tasks only. Assignee must be an active member of the owning department. A blocked task can be assigned ahead of time. Reassigning an In Progress task to someone else sends it back to Not Started, so the new person starts it |
 | Blocked | — | — | — | No actions; the UI shows which task it is waiting for |
 
-**Task owner** = a member of the owning department, or the assigned manager for `MANAGER` tasks. HR Admin has no
-override: they can see every task and checklist but start or complete only the tasks they own (an HR Admin who
-works in the owning department is a member of it). This matches service requests, where only the assignee acts.
+**How a department task reaches a person.** When a checklist is assigned, each department task is owned by a
+department and has **nobody assigned yet**. The **head of that department** sees all of the department's tasks and
+either completes them directly or assigns each to one active member of the department. The assignee then sees the task
+in their queue; other members of the department do not see it.
+
+**Task owner** (who may start / complete) = the person it is assigned to, or the head of the owning department; for a
+`MANAGER` task, the assigned manager. HR Admin has no override: they can see every task and assign department tasks (which
+also covers a department that has no head), but start or complete only the tasks assigned to them. This matches service
+requests, where the head assigns and only the assignee acts.
+
+**Why the head assigns (and not a "designated contact" per department).** It is the rule the product already uses for
+service requests, so there is one way to route work to a person; it needs no new table or setting, because
+`departments.head_id` already names the head (every department has exactly one); and a per-department contact would be a
+setting someone must keep current when people leave or change role. The cost is that the head becomes a step in the
+path, which is acceptable at this size, and the head can always do a task directly without assigning it.
+
 Each task has at most one dependency, and chains (A → B → C) are allowed. The blocked check is
 repeated inside the transaction. When the last task is completed, the instance becomes `COMPLETED`.
 
@@ -671,6 +690,7 @@ day the seed runs, so overdue and in-progress scenarios stay realistic.
 | Templates | "Standard Onboarding" (10 tasks) and "Engineering Onboarding" (12 tasks), with dependency chains such as *Create accounts → Provision laptop → Grant repository access*. |
 | New hires | 7, joined 10–55 days ago across all four countries, with Completed, In Progress and Not Started tasks, at least 3 overdue and at least 2 blocked. |
 | Logins | At least one per role, listed in `README.md`: an HR Admin; a Manager whose direct reports include a new hire; a new-hire Employee; an IT Operations Employee with assigned requests and IT onboarding tasks. |
+| Task assignment | Department tasks that were started or finished are assigned to a member of the owning department (the IT login holds most of IT's); about half of the not-started ones are still unassigned, so the department head has something to assign. |
 
 ---
 
@@ -731,7 +751,7 @@ Deliberately left out to fit the timeline. None of these appear in the code.
 1. A Manager's **team** is their direct reports. The **Manager of the handling department** (a Manager is
    the head of their own department) triages and assigns requests routed there.
 2. There is no separate approval state; "approve and assign" is the assign step.
-3. Each onboarding task has at most one dependency.
+3. Each onboarding task has at most one dependency. A department task is assigned to one person by the department head; there is no shared "anyone in the department" ownership.
 4. Overdue is calculated against today's date in Asia/Dhaka.
 5. Accounts are created by the seed script or by HR Admin; there is no self-registration.
 

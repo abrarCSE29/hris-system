@@ -39,6 +39,12 @@ afterEach(() => {
 });
 
 describe("People list", () => {
+  it("has no Add new hire button (adding a hire is done from the Onboarding page)", () => {
+    render(<PeoplePage />);
+    expect(screen.queryByRole("link", { name: /add new hire/i })).toBeNull();
+    expect(screen.queryByText(/add new hire/i)).toBeNull();
+  });
+
   it("shows the country and status by their names", () => {
     render(<PeoplePage />);
     const row = screen.getAllByRole("row").find((r) => within(r).queryByText("Ana Perera"))!;

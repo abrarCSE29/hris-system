@@ -26,7 +26,7 @@ export function useInstance(id: string) {
   return useQuery({ queryKey: [KEY, "instance", id], queryFn: () => api<InstanceDetail>(`/onboarding/instances/${id}`), retry: false });
 }
 
-export interface TaskFilters { status?: string; overdue?: string; page?: number; pageSize?: number }
+export interface TaskFilters { status?: string; overdue?: string; /** "false": only tasks nobody has been given yet */ assigned?: string; page?: number; pageSize?: number }
 export function useTaskQueue(filters: TaskFilters) {
   return useQuery({
     queryKey: [KEY, "tasks", filters],
@@ -49,6 +49,17 @@ export function useTaskTransition() {
       qc.invalidateQueries({ queryKey: [KEY] });
       qc.invalidateQueries({ queryKey: ["me"] });
     },
+  });
+}
+
+/** The head of the owning department (or HR) hands a department task to one of its members. */
+export function useAssignTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, assigneeId }: { taskId: string; assigneeId: string }) =>
+      api<{ assignee: { fullName: string } | null }>(`/onboarding/tasks/${taskId}/assign`, { method: "POST", body: { assigneeId } }),
+    meta: { success: (_v: unknown, r: { assignee: { fullName: string } | null }) => `Task assigned to ${r.assignee?.fullName ?? "the team member"}` },
+    onSettled: () => qc.invalidateQueries({ queryKey: [KEY] }),
   });
 }
 

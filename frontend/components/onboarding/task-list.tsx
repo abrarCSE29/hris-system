@@ -5,7 +5,7 @@ import type { OnboardingTask } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 
 export function ownerLabel(t: Pick<OnboardingTask, "ownerType" | "ownerDepartment" | "assignee">): string {
-  if (t.ownerType === "DEPARTMENT") return t.ownerDepartment?.name ?? "Department";
+  if (t.ownerType === "DEPARTMENT") return `${t.ownerDepartment?.name ?? "Department"} · ${t.assignee ? t.assignee.fullName : "Not assigned yet"}`;
   return t.assignee ? `Manager · ${t.assignee.fullName}` : "Manager";
 }
 
@@ -31,7 +31,7 @@ export function TaskList({ tasks }: { tasks: OnboardingTask[] }) {
               <p className="text-xs text-muted-foreground">Waiting for &ldquo;{t.dependsOn.title}&rdquo;</p>
             )}
           </div>
-          <TaskActions taskId={t.id} actions={t.allowedActions} />
+          <TaskActions task={t} />
         </li>
       ))}
     </ol>

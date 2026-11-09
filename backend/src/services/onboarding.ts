@@ -4,6 +4,7 @@ import { OnboardingInstanceStatus, Prisma } from "@/generated/prisma/client";
 import type { AuthUser } from "@/lib/auth";
 import { ApiError } from "@/lib/errors";
 import { requireLookupId } from "@/lib/lookup-ids";
+import type { StatusCode } from "@/lib/lookups";
 import { paginated, type Paging } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { isoDate } from "@/lib/validation";
@@ -11,7 +12,7 @@ import {
   addDays, displayStatus, isBlocked, isOverdue, summarize, todayInDhaka, toIsoDate, type TaskFacts,
 } from "./onboarding-logic";
 import { scopeInstances, scopeOwnedTasks, scopeVisibleTasks } from "./policy";
-import { allowedTaskActions, checkTaskTransition, type TaskAction, type TaskActor } from "./state-machine";
+import { allowedTaskActions, checkTaskAssign, checkTaskTransition, type TaskAction, type TaskActor } from "./state-machine";
 
 type Db = Prisma.TransactionClient;
 
@@ -30,9 +31,13 @@ export const listInstancesQuery = z.object({
 export const listTasksQuery = z.object({
   status: z.enum(["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "BLOCKED"]).optional(),
   overdue: z.enum(["true", "false"]).optional(),
+  /** `false`: department tasks nobody has been given yet (the head's "needs an owner" list). */
+  assigned: z.enum(["true", "false"]).optional(),
 });
 
 export const taskTransitionBody = z.object({ action: z.enum(["start", "complete"]) }).strict();
+
+export const assignTaskBody = z.object({ assigneeId: z.uuid() }).strict();
 
 // ── task view ────────────────────────────────────────────────────────────────
 
@@ -51,7 +56,12 @@ const factsOf = (t: TaskRow): TaskFacts => ({
   dueDate: toIsoDate(t.dueDate),
 });
 
-export const toTaskActor = (u: AuthUser): TaskActor => ({ id: u.id, role: u.role.code as TaskActor["role"], departmentId: u.department.id });
+export const toTaskActor = (u: AuthUser): TaskActor => ({
+  id: u.id,
+  role: u.role.code as TaskActor["role"],
+  departmentId: u.department.id,
+  headOfDepartmentId: u.headOfDepartmentId,
+});
 
 /** A task as the API returns it: stored status plus the calculated Blocked / Overdue, and what the viewer may do. */
 export function serializeTask(t: TaskRow, today: string, viewer: AuthUser) {
@@ -225,7 +235,10 @@ export async function listTasks(actor: AuthUser, q: z.infer<typeof listTasksQuer
     : q.overdue === "false" ? { OR: [{ status: "COMPLETED" }, { dueDate: { gte: new Date(`${today}T00:00:00Z`) } }] }
     : undefined;
 
-  const where: Prisma.OnboardingTaskWhereInput = { AND: [scopeOwnedTasks(actor), byStatus, ...(byOverdue ? [byOverdue] : [])] };
+  const byAssigned: Prisma.OnboardingTaskWhereInput | undefined =
+    q.assigned === "false" ? { ownerType: "DEPARTMENT", assigneeId: null } : q.assigned === "true" ? { assigneeId: { not: null } } : undefined;
+
+  const where: Prisma.OnboardingTaskWhereInput = { AND: [scopeOwnedTasks(actor), byStatus, ...(byOverdue ? [byOverdue] : []), ...(byAssigned ? [byAssigned] : [])] };
   const include = { ...taskInclude, instance: { select: { employee: { select: { id: true, fullName: true, country: { select: { id: true, shortcode: true, name: true } } } } } } };
   const [rows, total] = await Promise.all([
     prisma.onboardingTask.findMany({ where, include, orderBy: [{ dueDate: "asc" }, { sortOrder: "asc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
@@ -270,4 +283,39 @@ export async function transitionTask(actor: AuthUser, id: string, action: TaskAc
 
   const fresh = await prisma.onboardingTask.findUniqueOrThrow({ where: { id }, include: { ...taskInclude, instance: { select: { status: true } } } });
   return { ...serializeTask(fresh, today, actor), instanceStatus: fresh.instance.status };
+}
+
+// ── assigning a task ─────────────────────────────────────────────────────────
+
+/**
+ * The head of the owning department (or HR Admin) hands a department task to a member of that department. Locks the
+ * instance row like `transitionTask`, so assigning and starting/completing the same task can't interleave.
+ */
+export async function assignTask(actor: AuthUser, id: string, assigneeId: string, today = todayInDhaka()) {
+  asUuid(id, "Task");
+  const visible = await prisma.onboardingTask.findFirst({ where: { AND: [{ id }, scopeVisibleTasks(actor)] }, select: { id: true, instanceId: true } });
+  if (!visible) throw notFound("Task");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM onboarding_instances WHERE id = ${visible.instanceId}::uuid FOR UPDATE`;
+    const task = await tx.onboardingTask.findUniqueOrThrow({ where: { id }, include: taskInclude });
+    const candidate = await tx.user.findUnique({ where: { id: assigneeId }, select: { id: true, departmentId: true, status: { select: { code: true } } } });
+    const result = checkTaskAssign(
+      { status: task.status, blocked: isBlocked(factsOf(task)), ownerType: task.ownerType, ownerDepartmentId: task.ownerDepartmentId, assigneeId: task.assigneeId },
+      toTaskActor(actor),
+      candidate && { id: candidate.id, departmentId: candidate.departmentId, status: candidate.status.code as StatusCode },
+    );
+    if (!result.ok) {
+      if (result.reason === "invalid_assignee") throw new ApiError("VALIDATION_FAILED", result.message, [{ path: "assigneeId", message: result.message }]);
+      throw new ApiError("INVALID_TRANSITION", result.message);
+    }
+    const { count } = await tx.onboardingTask.updateMany({
+      where: { id, status: result.from, assigneeId: task.assigneeId },
+      data: { assigneeId: result.assigneeId, status: result.to },
+    });
+    if (count === 0) throw new ApiError("INVALID_TRANSITION", "This task was changed by someone else. Reload and try again.");
+  });
+
+  const fresh = await prisma.onboardingTask.findUniqueOrThrow({ where: { id }, include: taskInclude });
+  return serializeTask(fresh, today, actor);
 }

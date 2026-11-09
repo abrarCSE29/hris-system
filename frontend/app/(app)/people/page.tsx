@@ -1,7 +1,6 @@
 "use client";
 
-import { Search, UserPlus } from "lucide-react";
-import Link from "next/link";
+import { Search } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { FilterSelect } from "@/components/filter-select";
@@ -60,11 +59,6 @@ function People() {
             {isHr ? "Everyone across all four countries." : "Your direct reports."}
           </p>
         </div>
-        {isHr && (
-          <Button render={<Link href="/people/new" />} nativeButton={false}>
-            <UserPlus className="size-4" /> Add new hire
-          </Button>
-        )}
       </header>
 
       <div className="flex flex-wrap items-center gap-2">
