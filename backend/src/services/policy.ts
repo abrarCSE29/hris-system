@@ -31,12 +31,14 @@ export function scopeRequests(user: AuthUser): Prisma.ServiceRequestWhereInput {
 
 /**
  * Onboarding checklists a user may see (spec §5.2):
- * HR Admin: all. Manager: their direct reports'. Anyone: their own.
+ * HR Admin: all. Manager: their direct reports', plus, as head of a department, every checklist that has a task owned by
+ * that department (the task queue links there). Anyone: their own.
  */
 export function scopeInstances(user: AuthUser): Prisma.OnboardingInstanceWhereInput {
   if (user.role.code === "HR_ADMIN") return {};
   const scope: Prisma.OnboardingInstanceWhereInput[] = [{ employeeId: user.id }];
   if (user.role.code === "MANAGER") scope.push({ employee: { managerId: user.id } });
+  if (user.headOfDepartmentId) scope.push({ tasks: { some: { ownerType: "DEPARTMENT", ownerDepartmentId: user.headOfDepartmentId } } });
   return { OR: scope };
 }
 

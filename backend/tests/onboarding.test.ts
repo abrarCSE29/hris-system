@@ -194,6 +194,24 @@ describe("reading checklists (scope)", () => {
     expect((await send(getInstance, ids.personas.hrAdmin, { id: "nope" })).status).toBe(404);
   });
 
+  it("the head of a department that owns a task on the checklist can open it, and sees the hire in their list; other heads cannot", async () => {
+    const { body } = await assign();
+    // IT and People each own tasks on the standard checklist; neither head is the hire's manager.
+    for (const head of [itHead, peopleHead]) {
+      expect((await send(getInstance, head, { id: body.id })).status, String(head)).toBe(200);
+      const list = await json(await send(listInstancesRoute, head));
+      expect(list.data.map((i: any) => i.employee.id)).toEqual([ids.personas.newHire]);
+    }
+    // The detail still shows who may do what; opening it grants no actions.
+    const detail = await json(await send(getInstance, peopleHead, { id: body.id }));
+    expect(detail.tasks.filter((t: any) => t.allowedActions.length > 0).map((t: any) => t.title)).toEqual(["HR paperwork"]);
+    // A head whose department owns nothing on it still gets 404 and an empty list.
+    expect((await send(getInstance, otherManager, { id: body.id })).status).toBe(404);
+    expect((await json(await send(listInstancesRoute, otherManager))).data).toEqual([]);
+    // Plain members of those departments still cannot open it.
+    expect((await send(getInstance, itMember, { id: body.id })).status).toBe(404);
+  });
+
   it("/onboarding/me returns the user's own checklist, or null", async () => {
     expect(await json(await send(getMine, ids.personas.newHire))).toBeNull();
     const { body } = await assign();
@@ -399,7 +417,7 @@ describe("POST /onboarding/tasks/:id/transitions", () => {
     expect((await act(ids.personas.manager, t, "start")).status).toBe(409); // their manager sees it, but IT owns it
     expect((await act(peopleMember, t, "start")).status).toBe(404); // owns other tasks only; not this one
     expect((await act(itMember2, t, "start")).status).toBe(404); // same department as the assignee, but not the assignee
-    expect((await act(peopleHead, t, "start")).status).toBe(404); // head of another department
+    expect((await act(peopleHead, t, "start")).status).toBe(409); // head of another department: sees the checklist, can't act on IT's task
     expect((await act(itMember, welcome, "complete")).status).toBe(404);
     expect((await act(otherManager, welcome, "complete")).status).toBe(404);
     expect((await act(engOutsider, t, "start")).status).toBe(404);
@@ -527,9 +545,9 @@ describe("POST /onboarding/tasks/:id/assign", () => {
     const { body } = await assign();
     const t = await taskIdByTitle(body.id, "Create accounts");
     await giveTask(itHead, t, itMember);
-    // The assignee, the hire's manager and the hire can see the task, so they get 409; strangers get 404.
-    for (const who of [itMember, ids.personas.manager, ids.personas.newHire]) expect((await giveTask(who, t, itMember2)).status).toBe(409);
-    for (const who of [itMember2, peopleHead, otherManager]) expect((await giveTask(who, t, itMember2)).status).toBe(404);
+    // Anyone who can see the checklist (the assignee, the hire's manager, the hire, another department's head) gets 409; strangers get 404.
+    for (const who of [itMember, ids.personas.manager, ids.personas.newHire, peopleHead]) expect((await giveTask(who, t, itMember2)).status).toBe(409);
+    for (const who of [itMember2, otherManager]) expect((await giveTask(who, t, itMember2)).status).toBe(404);
     expect((await giveTask(null, t, itMember2)).status).toBe(401);
     expect(await ownerOf(t)).toMatchObject({ assigneeId: itMember }); // unchanged
   });

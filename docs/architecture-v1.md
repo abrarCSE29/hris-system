@@ -458,8 +458,8 @@ All paths below are relative to `/api/v1`.
 | GET | `/onboarding/templates/:id` | H | — | template with ordered tasks |
 | PUT | `/onboarding/templates/:id` | H | same body as create | updated template; replaces name, description and tasks. Checklists already assigned are copies and are **not** changed; `422` on dependency cycle, `409` on duplicate name |
 | POST | `/onboarding/instances` | H | `{ employeeId, templateId, startDate? }` | `201` checklist with dated tasks; `409` if one is already active |
-| GET | `/onboarding/instances` | M (direct reports), H (all) | `?countryId` | per hire: `{ total, completed, inProgress, notStarted, blocked, overdue, percentComplete }` |
-| GET | `/onboarding/instances/:id` | Hire (own), M (direct report), H | — | checklist with all tasks and calculated status |
+| GET | `/onboarding/instances` | M (direct reports, and checklists with a task owned by the department they head), H (all) | `?countryId` | per hire: `{ total, completed, inProgress, notStarted, blocked, overdue, percentComplete }` |
+| GET | `/onboarding/instances/:id` | Hire (own), M (direct report, or a checklist with a task owned by the department they head), H | — | checklist with all tasks and calculated status |
 | GET | `/onboarding/me` | Any | — | own checklist, or `null` |
 | GET | `/onboarding/tasks` | Any (tasks the user owns) | `?status&overdue&assigned` | task queue across all new hires: tasks assigned to the user, plus, for a department head, every task the department owns. `assigned=false` lists tasks nobody has yet. H sees all (read only) |
 | POST | `/onboarding/tasks/:id/transitions` | Task owner | `{ action: "start" \| "complete" }` | updated task; `409` if blocked |
@@ -546,7 +546,7 @@ of this and has not been built.
 | Role | Summary |
 |---|---|
 | **Employee** | Submits requests; sees own requests and requests assigned to them; sees own onboarding checklist; works the onboarding tasks assigned to them. |
-| **Manager** | Everything an Employee can do, plus: sees requests from direct reports; as head of their own department (the Manager role is the department head; there is no separate head with extra permissions), sees and assigns requests routed to that department; monitors onboarding of direct reports; works `MANAGER` tasks for their new hires; as department head, sees every onboarding task the department owns and either does it or assigns it to a member. |
+| **Manager** | Everything an Employee can do, plus: sees requests from direct reports; as head of their own department (the Manager role is the department head; there is no separate head with extra permissions), sees and assigns requests routed to that department; monitors onboarding of direct reports and of any checklist that has a task owned by the department they head (opening it grants no actions); works `MANAGER` tasks for their new hires; as department head, sees every onboarding task the department owns and either does it or assigns it to a member. |
 | **HR Admin** | Sees everything in both modules; creates templates and new hires; assigns checklists; can assign any department's onboarding tasks; uses the dashboard. |
 
 Requests and department onboarding tasks reach a person the same way: the **head of the department** assigns them
@@ -567,7 +567,7 @@ requests and IT onboarding tasks the IT head gave them.
 | Onboarding task queue | Tasks assigned to me | + all tasks of the department they head, assigned or not, + `MANAGER` tasks for direct reports | All (read only) |
 | Assign onboarding task | ❌ | Tasks owned by the department they head | ✅ (any department task) |
 | Start / complete task | If assigned to them | If assigned, or the task is their department's, + own `MANAGER` tasks | Only tasks assigned to them; no override |
-| Onboarding progress | ❌ | Direct reports | All |
+| Onboarding progress | ❌ | Direct reports + checklists with a task owned by the department they head | All |
 | Templates, new hires, assign checklist | ❌ | ❌ | ✅ |
 | Dashboard | ❌ | ❌ | ✅ |
 
