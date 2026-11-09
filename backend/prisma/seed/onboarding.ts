@@ -71,6 +71,7 @@ async function createTemplate(db: PrismaClient, base: Base, name: string, descri
  */
 export async function seedOnboarding(db: PrismaClient, base: Base) {
   const rand = mulberry32(4242);
+  const int = (min: number, max: number) => min + Math.floor(rand() * (max - min + 1));
   const today = todayInDhaka();
   const now = Date.now();
 
@@ -100,7 +101,12 @@ export async function seedOnboarding(db: PrismaClient, base: Base) {
     const itSupport = await db.user.findUniqueOrThrow({ where: { id: base.personas.itSupport }, select: { departmentId: true } });
     const delegateTo = async (t: (typeof tplTasks)[number]) => {
       if (t.ownerDepartmentId === itSupport.departmentId && rand() < 0.6) return base.personas.itSupport;
-      const members = await db.user.findMany({ where: { departmentId: t.ownerDepartmentId!, status: { code: { not: "ON_NOTICE" } } }, select: { id: true }, orderBy: { employeeCode: "asc" } });
+      // Never the new hire themself (they do not provision their own laptop), and not the Manager: the Manager hands tasks out.
+      const members = await db.user.findMany({
+        where: { departmentId: t.ownerDepartmentId!, status: { code: { not: "ON_NOTICE" } }, role: { code: "EMPLOYEE" }, id: { not: hire.id } },
+        select: { id: true },
+        orderBy: { employeeCode: "asc" },
+      });
       return members[Math.floor(rand() * members.length)].id;
     };
 
@@ -128,7 +134,9 @@ export async function seedOnboarding(db: PrismaClient, base: Base) {
       let done: { completedAt: Date; completedById: string } | null = null;
       if (s === "COMPLETED") {
         const depTime = t.dependsOnId ? (completedAt.get(newIdByTplId.get(t.dependsOnId)!) ?? 0) : 0;
-        const natural = new Date(`${addDays(startDate, Math.max(0, t.offsetDays - Math.floor(rand() * 3)))}T10:00:00Z`).getTime();
+        // Most tasks are done on or a little before the due day; about one in four slips by one to five days.
+        const slip = rand() < 0.25 ? int(1, 5) : 0;
+        const natural = new Date(`${addDays(startDate, slip > 0 ? t.offsetDays + slip : Math.max(0, t.offsetDays - Math.floor(rand() * 3)))}T10:00:00Z`).getTime();
         const at = Math.min(Math.max(natural, depTime + 3_600_000), now - 3_600_000);
         completedAt.set(id, at);
         done = { completedAt: new Date(at), completedById: t.ownerType === "MANAGER" ? hire.managerId! : assigneeId! };

@@ -36,6 +36,9 @@ export const NAMES: Record<Shortcode, { first: string[]; last: string[] }> = {
   },
 };
 
+/** Titles for HR Admins (the role stays HR Admin whatever the title says). The first person in the department is always the lead. */
+export const HR_ADMIN_TITLES = ["HR Administrator", "HR Systems Administrator", "HR Operations Specialist"] as const;
+
 export interface DepartmentPlan {
   code: string;
   name: string;
@@ -48,13 +51,13 @@ export interface DepartmentPlan {
 
 // Totals: 100 people, 7 managers (exactly one per department, who heads it), 3 HR admins, 90 employees.
 export const DEPARTMENTS: DepartmentPlan[] = [
-  { code: "ENG", name: "Engineering", headTitle: "Head of Engineering", hrAdmins: 0, employees: 29, employeeTitles: ["Software Engineer", "Senior Software Engineer", "Frontend Engineer", "Backend Engineer", "QA Engineer", "DevOps Engineer", "Data Engineer"] },
-  { code: "ITOPS", name: "IT Operations", headTitle: "Head of IT Operations", hrAdmins: 0, employees: 11, employeeTitles: ["IT Support Specialist", "Systems Administrator", "Network Engineer", "Security Analyst"] },
-  { code: "PEOPLE", name: "People & Culture", headTitle: "Head of People & Culture", hrAdmins: 3, employees: 6, employeeTitles: ["HR Business Partner", "Recruiter", "Payroll Specialist", "Learning & Development Specialist"] },
-  { code: "FIN", name: "Finance", headTitle: "Head of Finance", hrAdmins: 0, employees: 9, employeeTitles: ["Accountant", "Financial Analyst", "Accounts Payable Officer", "Treasury Analyst"] },
-  { code: "MKT", name: "Marketing", headTitle: "Head of Marketing", hrAdmins: 0, employees: 13, employeeTitles: ["Digital Marketing Specialist", "Content Strategist", "Brand Designer", "SEO Analyst"] },
-  { code: "LEGAL", name: "Legal & Compliance", headTitle: "Head of Legal & Compliance", hrAdmins: 0, employees: 5, employeeTitles: ["Legal Counsel", "Compliance Officer", "Contracts Specialist"] },
-  { code: "OPS", name: "Operations", headTitle: "Head of Operations", hrAdmins: 0, employees: 17, employeeTitles: ["Operations Coordinator", "Facilities Officer", "Office Administrator", "Procurement Officer"] },
+  { code: "ENG", name: "Engineering", headTitle: "Director of Engineering", hrAdmins: 0, employees: 29, employeeTitles: ["Software Engineer", "Senior Software Engineer", "Junior Software Engineer", "Frontend Engineer", "Backend Engineer", "Full-Stack Engineer", "QA Engineer", "Test Automation Engineer", "DevOps Engineer", "Data Engineer", "Mobile Engineer", "Site Reliability Engineer"] },
+  { code: "ITOPS", name: "IT Operations", headTitle: "Head of IT Operations", hrAdmins: 0, employees: 11, employeeTitles: ["IT Support Specialist", "Senior IT Support Specialist", "Systems Administrator", "Network Engineer", "Security Analyst", "Cloud Administrator", "Helpdesk Analyst", "Endpoint Engineer"] },
+  { code: "PEOPLE", name: "People & Culture", headTitle: "Head of People & Culture", hrAdmins: 3, employees: 6, employeeTitles: ["HR Business Partner", "Recruiter", "Talent Acquisition Partner", "Payroll Specialist", "Learning & Development Specialist", "Employee Relations Specialist"] },
+  { code: "FIN", name: "Finance", headTitle: "Finance Director", hrAdmins: 0, employees: 9, employeeTitles: ["Accountant", "Senior Accountant", "Financial Analyst", "Accounts Payable Officer", "Accounts Receivable Officer", "Treasury Analyst", "Payroll Accountant", "Budget Analyst"] },
+  { code: "MKT", name: "Marketing", headTitle: "Marketing Director", hrAdmins: 0, employees: 13, employeeTitles: ["Digital Marketing Specialist", "Content Strategist", "Brand Designer", "SEO Analyst", "Social Media Manager", "Marketing Analyst", "Copywriter", "Product Marketing Specialist"] },
+  { code: "LEGAL", name: "Legal & Compliance", headTitle: "Head of Legal & Compliance", hrAdmins: 0, employees: 5, employeeTitles: ["Legal Counsel", "Senior Legal Counsel", "Compliance Officer", "Contracts Specialist", "Data Protection Officer", "Paralegal"] },
+  { code: "OPS", name: "Operations", headTitle: "Head of Operations", hrAdmins: 0, employees: 17, employeeTitles: ["Operations Coordinator", "Facilities Officer", "Office Administrator", "Procurement Officer", "Logistics Coordinator", "Vendor Manager Assistant", "Workplace Experience Officer", "Travel & Events Coordinator"] },
 ];
 
 // Request categories and the department that handles each (spec §3.3).
@@ -76,8 +79,8 @@ export const NEW_HIRES: { country: Shortcode; department: string }[] = [
   { country: "BD", department: "MKT" },
   { country: "BD", department: "OPS" },
   { country: "MY", department: "FIN" },
-  { country: "MY", department: "MKT" },
-  { country: "LK", department: "OPS" },
+  { country: "MY", department: "ITOPS" },
+  { country: "LK", department: "ENG" },
   { country: "CY", department: "LEGAL" },
 ];
 
@@ -86,4 +89,6 @@ export const PERSONA_EMAILS = {
   manager: `manager@${EMAIL_DOMAIN}`,
   newHire: `new.hire@${EMAIL_DOMAIN}`,
   itSupport: `it.support@${EMAIL_DOMAIN}`,
+  /** The Manager of IT Operations: the busiest team dashboard (requests, tasks and a new hire). */
+  itManager: `it.manager@${EMAIL_DOMAIN}`,
 } as const;

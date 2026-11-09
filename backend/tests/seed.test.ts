@@ -101,6 +101,40 @@ describe("base seed", () => {
     expect(it?.status.code).toBe("ACTIVE");
   });
 
+  it("uses exactly three roles: HR Admin, Employee, and one Manager per department who heads it", async () => {
+    const users = await db.user.findMany({ include: { role: true, department: true } });
+    expect(new Set(users.map((u) => u.role.code))).toEqual(new Set(["HR_ADMIN", "EMPLOYEE", "MANAGER"]));
+    expect(await db.role.count()).toBe(3);
+    const departments = await db.department.findMany();
+    expect(departments).toHaveLength(7);
+    for (const d of departments) {
+      const managers = users.filter((u) => u.departmentId === d.id && u.role.code === "MANAGER");
+      expect(managers.map((m) => m.id), d.name).toEqual([d.headId]);
+      // Everyone else in the department reports to that Manager (HR Admins and Employees alike).
+      for (const u of users.filter((x) => x.departmentId === d.id && x.role.code !== "MANAGER")) expect(u.managerId, u.email).toBe(d.headId);
+    }
+    expect(users.filter((u) => u.role.code === "HR_ADMIN")).toHaveLength(3);
+  });
+
+  it("varies job titles within the three roles", async () => {
+    const users = await db.user.findMany({ include: { department: true, role: true } });
+    expect(new Set(users.map((u) => u.jobTitle)).size).toBeGreaterThanOrEqual(35);
+    for (const d of ["ENG", "OPS", "MKT", "ITOPS"]) {
+      const titles = users.filter((u) => u.department.code === d && u.role.code === "EMPLOYEE").map((u) => u.jobTitle);
+      expect(new Set(titles).size, d).toBeGreaterThanOrEqual(5);
+    }
+    // A title never turns into a fourth role: Managers and HR Admins keep their own titles.
+    expect(new Set(users.filter((u) => u.role.code === "HR_ADMIN").map((u) => u.jobTitle)).size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("gives the IT Operations Manager a documented login too", async () => {
+    const itManager = await db.user.findUnique({ where: { email: PERSONA_EMAILS.itManager }, include: { role: true, department: true } });
+    expect(itManager?.role.code).toBe("MANAGER");
+    expect(itManager?.department.code).toBe("ITOPS");
+    expect(base.personas.itManager).toBe(itManager?.id);
+    expect((await db.department.findUniqueOrThrow({ where: { code: "ITOPS" } })).headId).toBe(itManager?.id);
+  });
+
   it("is repeatable: clearing and seeding again yields the same data", async () => {
     const before = (await db.user.findMany({ orderBy: { employeeCode: "asc" }, include: { country: true, role: true } })).map((u) => `${u.employeeCode}|${u.fullName}|${u.email}|${u.country.shortcode}|${u.role.code}`);
     await clearAll(db);

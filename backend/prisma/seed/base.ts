@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "../../src/generated/prisma/client";
 import type { RoleCode, StatusCode } from "../../src/lib/lookups";
 import {
-  CATEGORIES, COUNTRY_COUNTS, COUNTRY_ROWS, DEPARTMENTS, EMAIL_DOMAIN, NAMES, NEW_HIRES, PERSONA_EMAILS, ROLE_ROWS, STATUS_ROWS,
+  CATEGORIES, COUNTRY_COUNTS, COUNTRY_ROWS, DEPARTMENTS, EMAIL_DOMAIN, HR_ADMIN_TITLES, NAMES, NEW_HIRES, PERSONA_EMAILS, ROLE_ROWS, STATUS_ROWS,
   type Shortcode,
 } from "./data";
 
@@ -119,7 +119,7 @@ export async function seedBase(db: PrismaClient, passwordHash: string) {
   for (const d of DEPARTMENTS) {
     const head = add(d.code, "MANAGER", d.headTitle, int(1200, 3000), null);
     headOf.set(d.code, head);
-    for (let i = 0; i < d.hrAdmins; i++) add(d.code, "HR_ADMIN", i === 0 ? "HR Operations Lead" : "HR Administrator", int(600, 2500), head.id);
+    for (let i = 0; i < d.hrAdmins; i++) add(d.code, "HR_ADMIN", i === 0 ? "HR Operations Lead" : HR_ADMIN_TITLES[(i - 1) % HR_ADMIN_TITLES.length], int(600, 2500), head.id);
     for (let i = 0; i < d.employees; i++) add(d.code, "EMPLOYEE", pick(d.employeeTitles), int(100, 2200), head.id);
   }
 
@@ -157,6 +157,8 @@ export async function seedBase(db: PrismaClient, passwordHash: string) {
   personaHire.email = PERSONA_EMAILS.newHire;
   const personaManager = planned.find((p) => p.id === personaHire.managerId)!;
   personaManager.email = PERSONA_EMAILS.manager;
+  const itManager = headOf.get("ITOPS")!;
+  itManager.email = PERSONA_EMAILS.itManager;
   const itSupport = pickFree((e) => e.deptCode === "ITOPS");
   itSupport.email = PERSONA_EMAILS.itSupport;
 
@@ -195,6 +197,7 @@ export async function seedBase(db: PrismaClient, passwordHash: string) {
       manager: personaManager.id,
       newHire: personaHire.id,
       itSupport: itSupport.id,
+      itManager: itManager.id,
     },
     /** Users designated as new hires; the onboarding seed (T17) assigns their checklists. */
     newHireIds: newHires.map((p) => p.id),

@@ -69,7 +69,7 @@ describe("summary values match independent SQL (seeded data)", () => {
     const rows = await sql<{ status: string; n: bigint }>("SELECT status::text, COUNT(*) n FROM service_requests GROUP BY 1");
     for (const r of s.requestsByStatus) expect(r.count).toBe(num(rows.find((x) => x.status === r.status)?.n ?? 0));
     expect(s.requestsByStatus.map((r) => r.status)).toEqual(["SUBMITTED", "ASSIGNED", "IN_PROGRESS", "RESOLVED", "CLOSED"]);
-    expect(s.requestsByStatus.map((r) => r.count)).toEqual([7, 7, 8, 6, 7]);
+    expect(s.requestsByStatus.map((r) => r.count)).toEqual([10, 12, 14, 16, 28]);
   });
 
   it("requests by category, with how many are still open", async () => {
@@ -84,7 +84,7 @@ describe("summary values match independent SQL (seeded data)", () => {
       expect([c.count, c.open]).toEqual([num(row.total), num(row.open)]);
       expect(c.open).toBeLessThanOrEqual(c.count);
     }
-    expect(s.requestsByCategory.reduce((a, c) => a + c.count, 0)).toBe(35);
+    expect(s.requestsByCategory.reduce((a, c) => a + c.count, 0)).toBe(80);
   });
 
   it("onboarding totals: active hires, overdue and blocked tasks", async () => {
@@ -229,7 +229,7 @@ describe("cross-module insight: new hires waiting on IT", () => {
     expect(now.hires.map((h) => h.id)).not.toContain(a.id);
     expect(now.count).toBe(start.count - 1);
 
-    await db.serviceRequest.updateMany({ where: { id: { in: b.openRequests.map((r) => r.id) } }, data: { status: "RESOLVED" } });
+    await db.serviceRequest.updateMany({ where: { id: { in: b.openRequests.map((r) => r.id) } }, data: { status: "RESOLVED", assigneeId: base.personas.itSupport } });
     now = await waiting();
     expect(now.hires.map((h) => h.id)).not.toContain(b.id);
     expect(now.count).toBe(start.count - 2);

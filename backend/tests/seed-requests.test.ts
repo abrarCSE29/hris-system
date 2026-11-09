@@ -17,23 +17,64 @@ const counts = async (field: "status" | "priority" | "categoryId") =>
   Object.fromEntries((await db.serviceRequest.groupBy({ by: [field], _count: true })).map((g) => [g[field], g._count]));
 
 describe("request seed", () => {
-  it("creates 35 requests numbered SR-1001…SR-1035, oldest first", async () => {
+  it("creates 80 requests numbered SR-1001…SR-1080, oldest first", async () => {
     const rows = await db.serviceRequest.findMany({ orderBy: { reference: "asc" } });
-    expect(rows).toHaveLength(35);
-    expect(rows.map((r) => r.reference)).toEqual(Array.from({ length: 35 }, (_, i) => `SR-${1001 + i}`));
+    expect(rows).toHaveLength(80);
+    expect(rows.map((r) => r.reference)).toEqual(Array.from({ length: 80 }, (_, i) => `SR-${1001 + i}`));
     const times = rows.map((r) => r.createdAt.getTime());
     expect(times).toEqual([...times].sort((a, b) => a - b));
   });
 
   it("covers all 5 categories, 5 statuses and 4 priorities", async () => {
     expect(Object.keys(await counts("categoryId"))).toHaveLength(5);
-    expect(await counts("status")).toEqual({ SUBMITTED: 7, ASSIGNED: 7, IN_PROGRESS: 8, RESOLVED: 6, CLOSED: 7 });
-    expect(await counts("priority")).toEqual({ LOW: 8, MEDIUM: 15, HIGH: 8, URGENT: 4 });
+    expect(await counts("status")).toEqual({ SUBMITTED: 10, ASSIGNED: 12, IN_PROGRESS: 14, RESOLVED: 16, CLOSED: 28 });
+    expect(await counts("priority")).toEqual({ LOW: 18, MEDIUM: 34, HIGH: 19, URGENT: 9 });
   });
 
-  it("routes each request to its category's department", async () => {
-    const rows = await db.serviceRequest.findMany({ include: { category: true } });
-    for (const r of rows) expect(r.handlingDepartmentId).toBe(r.category.handlingDepartmentId);
+  it("routes a request to its category's department, or to the one that really owns it", async () => {
+    const rows = await db.serviceRequest.findMany({ include: { category: true, handlingDepartment: true } });
+    const rerouted = rows.filter((r) => r.handlingDepartmentId !== r.category.handlingDepartmentId);
+    expect(rerouted.length).toBeGreaterThanOrEqual(20);
+    // A repository, design-tool, finance-tool or contract request goes to Engineering, Marketing, Finance or Legal, not to IT or HR.
+    expect(new Set(rerouted.map((r) => r.handlingDepartment.code))).toEqual(new Set(["ENG", "MKT", "FIN", "LEGAL", "OPS"]));
+    expect(rows.find((r) => r.title === "Access to source code repository")?.handlingDepartment.code).toBe("ENG");
+    expect(rows.find((r) => r.title === "Supplier contract review")?.handlingDepartment.code).toBe("LEGAL");
+  });
+
+  it("gives every department's team requests to work on, so every Manager has something on their dashboard", async () => {
+    const departments = await db.department.findMany();
+    for (const d of departments) {
+      const handled = await db.serviceRequest.findMany({ where: { handlingDepartmentId: d.id } });
+      expect(handled.length, `${d.code} handles`).toBeGreaterThanOrEqual(5);
+      expect(handled.filter((r) => r.assigneeId !== null).length, `${d.code} assigned`).toBeGreaterThanOrEqual(3);
+      expect(handled.filter((r) => ["RESOLVED", "CLOSED"].includes(r.status)).length, `${d.code} resolved`).toBeGreaterThanOrEqual(2);
+      expect(handled.filter((r) => ["ASSIGNED", "IN_PROGRESS"].includes(r.status)).length, `${d.code} in hand`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("spreads requests over the last 90 days, with resolutions in every period the dashboard offers", async () => {
+    const DAY = 86_400_000;
+    const now = Date.now();
+    const rows = await db.serviceRequest.findMany();
+    expect(Math.max(...rows.map((r) => (now - r.createdAt.getTime()) / DAY))).toBeGreaterThanOrEqual(60);
+    expect(Math.max(...rows.map((r) => (now - r.createdAt.getTime()) / DAY))).toBeLessThanOrEqual(95);
+    expect(Math.min(...rows.map((r) => (now - r.createdAt.getTime()) / DAY))).toBeLessThanOrEqual(3);
+    const resolved = (await db.requestEvent.findMany({ where: { toStatus: "RESOLVED" } })).map((e) => (now - e.createdAt.getTime()) / DAY);
+    expect(resolved.filter((d) => d <= 7).length).toBeGreaterThanOrEqual(1);
+    expect(resolved.filter((d) => d > 7 && d <= 30).length).toBeGreaterThanOrEqual(6);
+    expect(resolved.filter((d) => d > 30 && d <= 90).length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("takes realistic, varied time to resolve: some same-day, some several days, urgent ones faster than low ones", async () => {
+    const HOUR = 3_600_000;
+    const rows = await db.serviceRequest.findMany({ where: { status: { in: ["RESOLVED", "CLOSED"] } }, include: { events: true } });
+    const hours = rows.map((r) => ({ priority: r.priority, h: (r.events.find((e) => e.toStatus === "RESOLVED")!.createdAt.getTime() - r.createdAt.getTime()) / HOUR }));
+    expect(Math.min(...hours.map((x) => x.h))).toBeLessThan(24);
+    expect(Math.max(...hours.map((x) => x.h))).toBeGreaterThan(72);
+    expect(Math.max(...hours.map((x) => x.h))).toBeLessThan(24 * 14);
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const of = (p: string) => hours.filter((x) => x.priority === p).map((x) => x.h);
+    expect(mean(of("URGENT").concat(of("HIGH")))).toBeLessThan(mean(of("LOW").concat(of("MEDIUM"))));
   });
 
   it("assigns every non-SUBMITTED request to an active member of the handling department", async () => {
@@ -79,7 +120,7 @@ describe("request seed", () => {
   it("has at least 6 requests with 2–4 comments, written by people involved", async () => {
     const rows = await db.serviceRequest.findMany({ include: { comments: true, requester: true } });
     const threaded = rows.filter((r) => r.comments.length > 0);
-    expect(threaded.length).toBeGreaterThanOrEqual(6);
+    expect(threaded.length).toBeGreaterThanOrEqual(10);
     for (const r of threaded) {
       expect(r.comments.length).toBeGreaterThanOrEqual(2);
       expect(r.comments.length).toBeLessThanOrEqual(4);
