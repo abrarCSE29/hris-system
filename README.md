@@ -162,6 +162,20 @@ Every Manager is the head of their own department; there is no separate head rol
 - Row-level security is enabled on every table with no policies. That blocks Supabase's public Data API; the
   backend connects as the table owner, which is unaffected.
 
+## Logs
+
+The backend writes one JSON line per request to stdout (warnings and errors to stderr), plus a full redacted record of any
+unexpected error and lines for sign-ins, failed sign-ins, sign-outs, invalid sessions and 403s. While developing
+(`npm run dev`) they print as short coloured lines, errors in red. Set `LOG_LEVEL` (`debug`, `info`, `warn`, `error`) to change
+how much is written.
+
+**Tracing a failure:** every response has an `x-request-id` header (and error bodies an `error.requestId`). Search the backend
+output for that id to see the route, status, user and, for a 500, the error and its stack. For a chat-assistant draft the same
+id is the `chat_drafts.request_id` and appears in the AI service's logs.
+
+Passwords, cookies, tokens, request bodies, the attempted email on a failed sign-in and chat messages are never logged.
+Nothing is stored in the database, so logs last as long as the host keeps them. Details: `docs/architecture-v1.md` §4.8.
+
 ## Deploying (Vercel + Supabase)
 
 > **Not yet done or verified.** Everything below is prepared and the code builds without any environment

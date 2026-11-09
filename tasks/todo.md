@@ -597,10 +597,11 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 41: Docs
 **Description:** `docs/architecture-v1.md` and the README: what is logged, what is never logged, how to find a request by its id.
 **Acceptance criteria:**
-- [ ] Docs describe the lines, the request id and the never-logged list
+- [x] Docs describe the lines, the request id and the never-logged list
+**Done:** `docs/architecture-v1.md` §4.8 (format, every event, never-logged list, finding a request by id, retention), request flow step 2, error envelope and `x-request-id` in §4.1, `LOG_LEVEL` in the environment table; README "Logs" section; `backend/.env.example`.
 **Dependencies:** T39, T40
 **Scope:** S
 
 ### Checkpoint: System logs complete
-- [ ] All spec success criteria met; backend and frontend suites and type-check pass
+- [x] All spec success criteria met; backend (733) and frontend (147) suites and type-check pass; every route uses a wrapper; no console call left in backend src or app
 - [ ] Ready for review
