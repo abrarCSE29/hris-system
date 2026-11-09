@@ -242,3 +242,111 @@ describe("team dashboard: requests", () => {
     expect(body.requests.open).toBe(3); // open work does not depend on the real date
   });
 });
+
+// ═════════════════════════════════ Task 44: onboarding tasks ═══════════════════════
+
+describe("team dashboard: onboarding tasks", () => {
+  // Same fixed "today" as above. Period for days=30: 2026-05-17 .. 2026-06-15, i.e. 2026-05-16T18:00:00Z up to (not including) 2026-06-15T18:00:00Z.
+  const TODAY = "2026-06-15";
+  let A: string, B: string, outsider: string, instanceId: string, departmentId: string;
+  let order = 0;
+  const manager = () => ({ id: base.personas.manager }) as AuthUser;
+  const dash = (days: 7 | 30 | 90 = 30, who = manager()) => getTeamDashboard(who, days, TODAY);
+  const row = (d: Awaited<ReturnType<typeof dash>>, id: string) => d.people.find((p) => p.id === id)!;
+
+  async function task(o: { assignee: string | null; due: string; status?: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED"; dependsOn?: string; completedAt?: string }) {
+    const t = await db.onboardingTask.create({
+      data: {
+        instanceId, title: `t${++order}`, description: "", ownerType: "DEPARTMENT", ownerDepartmentId: departmentId, assigneeId: o.assignee,
+        dueDate: new Date(`${o.due}T00:00:00Z`), status: o.status ?? (o.completedAt ? "COMPLETED" : "NOT_STARTED"), dependsOnId: o.dependsOn ?? null,
+        completedAt: o.completedAt ? new Date(o.completedAt) : null, completedById: o.completedAt ? o.assignee : null, sortOrder: order,
+      },
+    });
+    return t.id;
+  }
+
+  beforeAll(async () => {
+    const reports = await db.user.findMany({ where: { managerId: base.personas.manager }, orderBy: { fullName: "asc" } });
+    [A, B] = [reports[0].id, reports[1].id];
+    outsider = (await db.user.findFirstOrThrow({ where: { managerId: otherManager } })).id;
+    departmentId = (await db.department.findFirstOrThrow()).id;
+    await db.onboardingTask.deleteMany();
+    await db.onboardingInstance.deleteMany();
+    const template = await db.onboardingTemplate.create({ data: { name: "T44", description: "", createdById: base.personas.hrAdmin } });
+    instanceId = (await db.onboardingInstance.create({ data: { employeeId: base.personas.newHire, templateId: template.id, startDate: new Date("2026-06-01T00:00:00Z") } })).id;
+
+    // ── open work, as of today (2026-06-15) ──
+    const t1 = await task({ assignee: A, due: "2026-06-14" }); //                         open, overdue
+    await task({ assignee: A, due: "2026-06-15", status: "IN_PROGRESS" }); //              open, due today: not overdue
+    await task({ assignee: A, due: "2026-06-20", dependsOn: t1 }); //                      open, blocked (waits for t1), not overdue
+    const done = await task({ assignee: A, due: "2026-06-02", completedAt: "2026-06-01T10:00:00Z" }); // completed on time (a dependency)
+    await task({ assignee: A, due: "2026-06-10", dependsOn: done }); //                    open, overdue, NOT blocked (its dependency is done)
+    await task({ assignee: B, due: "2026-06-01", dependsOn: t1 }); //                      open, overdue, blocked
+    // ── completed in the 30-day period: on time means the Dhaka date of completion is on or before the due date ──
+    await task({ assignee: A, due: "2026-06-10", completedAt: "2026-06-10T17:59:59Z" }); // Dhaka 06-10 23:59:59 → on time (due day is included)
+    await task({ assignee: A, due: "2026-06-10", completedAt: "2026-06-10T18:00:00Z" }); // Dhaka 06-11 00:00:00 → late by a second
+    await task({ assignee: A, due: "2026-06-12", completedAt: "2026-06-05T00:00:00Z" }); // early → on time
+    await task({ assignee: A, due: "2026-06-14", completedAt: "2026-06-15T17:59:59Z" }); // last second of today, Dhaka 06-15 → late
+    await task({ assignee: B, due: "2026-06-14", completedAt: "2026-06-14T12:00:00Z" }); // on time
+    // Completed just outside the period: never counted.
+    await task({ assignee: A, due: "2026-05-10", completedAt: "2026-05-16T17:59:59Z" });
+    await task({ assignee: A, due: "2026-06-14", completedAt: "2026-06-15T18:00:00Z" });
+    // ── not the team: another manager's report, the manager themself, and nobody ──
+    await task({ assignee: outsider, due: "2026-06-01" });
+    await task({ assignee: outsider, due: "2026-06-10", completedAt: "2026-06-09T00:00:00Z" });
+    await task({ assignee: base.personas.manager, due: "2026-06-01" });
+    await task({ assignee: base.personas.manager, due: "2026-06-10", completedAt: "2026-06-09T00:00:00Z" });
+    await task({ assignee: null, due: "2026-06-01" });
+  });
+
+  it("counts unfinished tasks as open, whatever their due date", async () => {
+    const d = await dash();
+    expect(row(d, A).openTasks).toBe(4); // overdue, in progress, blocked, overdue-but-unblocked
+    expect(row(d, B).openTasks).toBe(1);
+    expect(d.tasks.open).toBe(5);
+  });
+
+  it("counts overdue as unfinished and due before today; a task due today is not overdue", async () => {
+    const d = await dash();
+    expect(row(d, A).overdueTasks).toBe(2);
+    expect(row(d, B).overdueTasks).toBe(1);
+    expect(d.tasks.overdue).toBe(3);
+  });
+
+  it("counts blocked as unfinished and waiting on an unfinished task; not when the dependency is done", async () => {
+    const d = await dash();
+    expect(d.tasks.blocked).toBe(2); // A's t3 and B's task, both waiting on t1
+  });
+
+  it("splits completions in the period by the Dhaka date: on time up to and including the due day, late after", async () => {
+    const d = await dash();
+    expect(row(d, A)).toMatchObject({ tasksCompletedOnTime: 3, tasksCompletedLate: 2 }); // on time: 23:59:59 on the day, early, and the dependency; late: one second after, last second of today
+    expect(row(d, B)).toMatchObject({ tasksCompletedOnTime: 1, tasksCompletedLate: 0 });
+    expect(d.tasks).toMatchObject({ completedOnTime: 4, completedLate: 2 });
+  });
+
+  it("follows the period for completions only: 7 days", async () => {
+    const d = await dash(7);
+    expect(row(d, A)).toMatchObject({ tasksCompletedOnTime: 1, tasksCompletedLate: 2 });
+    expect(d.tasks).toMatchObject({ completedOnTime: 2, completedLate: 2 });
+    // Current-state numbers do not move with the period.
+    expect(d.tasks).toMatchObject({ open: 5, overdue: 3, blocked: 2 });
+    expect(await dash(90)).toMatchObject({ tasks: { open: 5, overdue: 3, blocked: 2 } });
+  });
+
+  it("never counts another manager's report, the manager's own tasks, or unassigned tasks", async () => {
+    const other = await dash(30, { id: otherManager } as AuthUser);
+    expect(other.tasks).toMatchObject({ open: 1, overdue: 1, blocked: 0, completedOnTime: 1, completedLate: 0 });
+    const lonely = await dash(30, { id: lonelyManager } as AuthUser);
+    expect(lonely.tasks).toEqual({ open: 0, overdue: 0, blocked: 0, completedOnTime: 0, completedLate: 0 });
+  });
+
+  it("keeps the totals equal to the sum of the people rows", async () => {
+    const d = await dash();
+    const sum = (f: (p: (typeof d.people)[number]) => number) => d.people.reduce((n, p) => n + f(p), 0);
+    expect(sum((p) => p.openTasks)).toBe(d.tasks.open);
+    expect(sum((p) => p.overdueTasks)).toBe(d.tasks.overdue);
+    expect(sum((p) => p.tasksCompletedOnTime)).toBe(d.tasks.completedOnTime);
+    expect(sum((p) => p.tasksCompletedLate)).toBe(d.tasks.completedLate);
+  });
+});

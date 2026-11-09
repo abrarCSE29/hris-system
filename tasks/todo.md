@@ -639,10 +639,11 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 44: Task measures
 **Description:** Open, overdue now, blocked now, completed on time and completed late, for onboarding tasks assigned to the team (department tasks the head assigned, and `MANAGER` tasks).
 **Acceptance criteria:**
-- [ ] On time = completed in the period on or before the due date (Dhaka date); late = after; a completion before the window is excluded
-- [ ] Overdue and blocked use the same rules as the existing queue and ignore `days`; unassigned and non-team tasks never count
+- [x] On time = completed in the period on or before the due date (Dhaka date); late = after; a completion before the window is excluded
+- [x] Overdue and blocked use the same rules as the existing queue and ignore `days`; unassigned and non-team tasks never count
 **Verification:**
-- [ ] Tests first; mutation check: change `<=` to `<` in the on-time comparison
+- [x] Tests first with a fixed "today" and hand-computed numbers; mutation checks (each failed a test): `<=` to `<` in the on-time comparison, UTC date instead of Dhaka date, completions not limited to the period start, a task due today counted overdue, blocked ignoring whether the dependency is done, open tasks not limited to the team, completed tasks counted as open
+**Done:** `tasks.open / overdue / blocked / completedOnTime / completedLate` and each person's `openTasks`, `overdueTasks`, `tasksCompletedOnTime`, `tasksCompletedLate`. Overdue and blocked reuse `isOverdue` / `isBlocked` from `onboarding-logic.ts`, so they cannot drift from the task queue. A completion is credited to the task's **assignee**, even if the department head completed it for them (spec assumption 3). Backend 923 tests pass.
 **Dependencies:** T43
 **Files:** `backend/src/services/team-dashboard.ts`, `backend/tests/team-dashboard.test.ts`
 **Scope:** S

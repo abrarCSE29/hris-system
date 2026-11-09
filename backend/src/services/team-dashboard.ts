@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { RequestStatus } from "@/generated/prisma/client";
 import type { AuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { addDays, todayInDhaka } from "./onboarding-logic";
+import { addDays, isBlocked, isOverdue, todayInDhaka, toIsoDate } from "./onboarding-logic";
 
 /**
  * Manager dashboard (spec docs/spec-manager-dashboard.md). Computed live from the tables, never stored.
@@ -20,6 +20,9 @@ export const teamQuery = z.object({
 /** Asia/Dhaka has no daylight saving: midnight there is always 18:00 UTC the evening before. */
 const dhakaMidnight = (isoDate: string) => new Date(`${isoDate}T00:00:00+06:00`);
 
+/** The calendar date in Asia/Dhaka of a moment, as YYYY-MM-DD. */
+const dhakaDate = (moment: Date) => new Date(moment.getTime() + 6 * 3_600_000).toISOString().slice(0, 10);
+
 /** Requests that are being worked on: assigned or in progress. A submitted request has no owner yet; a resolved one is done. */
 const OPEN_STATUSES: RequestStatus[] = ["ASSIGNED", "IN_PROGRESS"];
 
@@ -35,12 +38,21 @@ export async function getTeamDashboard(manager: AuthUser, days: Period = 30, tod
   const until = dhakaMidnight(addDays(today, 1)); // end of today, exclusive
 
   // Every query below is limited to the team's own ids; with no team there is nothing to ask.
-  const [openRows, resolvedEvents] = ids.length === 0 ? [[], []] : await Promise.all([
+  const [openRows, resolvedEvents, openTasks, completedTasks] = ids.length === 0 ? [[], [], [], []] : await Promise.all([
     prisma.serviceRequest.groupBy({ by: ["assigneeId"], where: { assigneeId: { in: ids }, status: { in: OPEN_STATUSES } }, _count: true }),
     // A request is resolved once (Resolved only moves on to Closed), so one RESOLVED event per request.
     prisma.requestEvent.findMany({
       where: { toStatus: "RESOLVED", createdAt: { gte: from, lt: until }, request: { assigneeId: { in: ids } } },
       select: { createdAt: true, request: { select: { assigneeId: true, createdAt: true } } },
+    }),
+    // Onboarding tasks are the team's by their own assignee. Overdue and blocked use the same rules as the task queue.
+    prisma.onboardingTask.findMany({
+      where: { assigneeId: { in: ids }, status: { not: "COMPLETED" } },
+      select: { assigneeId: true, status: true, dueDate: true, dependsOn: { select: { status: true } } },
+    }),
+    prisma.onboardingTask.findMany({
+      where: { assigneeId: { in: ids }, status: "COMPLETED", completedAt: { gte: from, lt: until } },
+      select: { assigneeId: true, dueDate: true, completedAt: true },
     }),
   ]);
 
@@ -51,17 +63,30 @@ export async function getTeamDashboard(manager: AuthUser, days: Period = 30, tod
     resolvedBy.set(e.request.assigneeId!, (resolvedBy.get(e.request.assigneeId!) ?? 0) + 1);
     resolvedMs += e.createdAt.getTime() - e.request.createdAt.getTime();
   }
+  const open = new Map<string, number>(), overdue = new Map<string, number>(), onTime = new Map<string, number>(), late = new Map<string, number>();
+  const bump = (m: Map<string, number>, id: string) => m.set(id, (m.get(id) ?? 0) + 1);
+  let blocked = 0;
+  for (const t of openTasks) {
+    const facts = { status: t.status, dependsOnStatus: t.dependsOn?.status ?? null, dueDate: toIsoDate(t.dueDate) };
+    bump(open, t.assigneeId!);
+    if (isOverdue(facts, today)) bump(overdue, t.assigneeId!);
+    if (isBlocked(facts)) blocked++;
+  }
+  for (const t of completedTasks) {
+    // On time = finished on or before the due day (a calendar day in Dhaka); late = after it.
+    bump(dhakaDate(t.completedAt!) <= toIsoDate(t.dueDate) ? onTime : late, t.assigneeId!);
+  }
   const oneDecimal = (n: number) => Math.round(n * 10) / 10;
   const people = team.map((u) => ({
     id: u.id,
     fullName: u.fullName,
     jobTitle: u.jobTitle,
     openRequests: openBy.get(u.id) ?? 0,
-    openTasks: 0,
-    overdueTasks: 0,
+    openTasks: open.get(u.id) ?? 0,
+    overdueTasks: overdue.get(u.id) ?? 0,
     resolvedInPeriod: resolvedBy.get(u.id) ?? 0,
-    tasksCompletedOnTime: 0,
-    tasksCompletedLate: 0,
+    tasksCompletedOnTime: onTime.get(u.id) ?? 0,
+    tasksCompletedLate: late.get(u.id) ?? 0,
   }));
 
   return {
@@ -74,7 +99,13 @@ export async function getTeamDashboard(manager: AuthUser, days: Period = 30, tod
       resolvedInPeriod: resolvedEvents.length,
       avgHoursToResolve: resolvedEvents.length === 0 ? null : oneDecimal(resolvedMs / resolvedEvents.length / 3_600_000),
     },
-    tasks: { open: 0, overdue: 0, blocked: 0, completedOnTime: 0, completedLate: 0 },
+    tasks: {
+      open: openTasks.length,
+      overdue: people.reduce((n, p) => n + p.overdueTasks, 0),
+      blocked,
+      completedOnTime: people.reduce((n, p) => n + p.tasksCompletedOnTime, 0),
+      completedLate: people.reduce((n, p) => n + p.tasksCompletedLate, 0),
+    },
     newHires: [] as { employee: { id: string; fullName: string }; instanceId: string; percentComplete: number; overdue: number; blocked: number }[],
     people,
   };
