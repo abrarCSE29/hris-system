@@ -12,7 +12,22 @@ import DepartmentsPage from "@/app/(app)/departments/page";
 
 afterEach(cleanup);
 
-const COUNTRIES = ["BANGLADESH", "MALAYSIA", "SRI_LANKA", "CYPRUS"];
+const COUNTRIES = [
+  { id: "c-bd", shortcode: "BD", name: "Bangladesh" },
+  { id: "c-cy", shortcode: "CY", name: "Cyprus" },
+  { id: "c-my", shortcode: "MY", name: "Malaysia" },
+  { id: "c-lk", shortcode: "LK", name: "Sri Lanka" },
+];
+const STATUS = {
+  ACTIVE: { id: "s-a", code: "ACTIVE" as const, name: "Active" },
+  ON_PROBATION: { id: "s-p", code: "ON_PROBATION" as const, name: "On probation" },
+  ON_NOTICE: { id: "s-n", code: "ON_NOTICE" as const, name: "On notice" },
+};
+const ROLE = {
+  EMPLOYEE: { id: "r-e", code: "EMPLOYEE" as const, name: "Employee" },
+  MANAGER: { id: "r-m", code: "MANAGER" as const, name: "Manager" },
+  HR_ADMIN: { id: "r-h", code: "HR_ADMIN" as const, name: "HR Admin" },
+};
 const dept = (id: string, name: string, headcount: number, over: Partial<DepartmentBreakdown["departments"][number]> = {}) => ({
   id,
   code: name.slice(0, 3).toUpperCase(),
@@ -21,14 +36,14 @@ const dept = (id: string, name: string, headcount: number, over: Partial<Departm
   headcount,
   byCountry: COUNTRIES.map((country, i) => ({ country, count: i === 0 ? headcount : 0 })),
   byStatus: [
-    { status: "ACTIVE" as const, count: headcount },
-    { status: "ON_PROBATION" as const, count: 0 },
-    { status: "ON_NOTICE" as const, count: 0 },
+    { status: STATUS.ACTIVE, count: headcount },
+    { status: STATUS.ON_PROBATION, count: 0 },
+    { status: STATUS.ON_NOTICE, count: 0 },
   ],
   byRole: [
-    { role: "EMPLOYEE" as const, count: headcount },
-    { role: "MANAGER" as const, count: 0 },
-    { role: "HR_ADMIN" as const, count: 0 },
+    { role: ROLE.EMPLOYEE, count: headcount },
+    { role: ROLE.MANAGER, count: 0 },
+    { role: ROLE.HR_ADMIN, count: 0 },
   ],
   ...over,
 });
@@ -42,16 +57,16 @@ describe("departments helpers", () => {
     expect(statusSentence(dept("a", "Alpha", 3).byStatus)).toBe("—");
     expect(
       statusSentence([
-        { status: "ACTIVE", count: 5 },
-        { status: "ON_PROBATION", count: 2 },
-        { status: "ON_NOTICE", count: 1 },
+        { status: STATUS.ACTIVE, count: 5 },
+        { status: STATUS.ON_PROBATION, count: 2 },
+        { status: STATUS.ON_NOTICE, count: 1 },
       ]),
     ).toBe("2 on probation · 1 on notice");
     expect(
       roleSentence([
-        { role: "EMPLOYEE", count: 9 },
-        { role: "MANAGER", count: 1 },
-        { role: "HR_ADMIN", count: 2 },
+        { role: ROLE.EMPLOYEE, count: 9 },
+        { role: ROLE.MANAGER, count: 1 },
+        { role: ROLE.HR_ADMIN, count: 2 },
       ]),
     ).toBe("1 manager · 2 HR admins");
   });

@@ -55,11 +55,13 @@ describe("GET /dashboard/summary (route)", () => {
 describe("summary values match independent SQL (seeded data)", () => {
   it("headcount by country", async () => {
     const s = await getDashboardSummary(today);
-    const rows = await sql<{ country: string; n: bigint }>("SELECT country::text, COUNT(*) n FROM users GROUP BY 1");
-    expect(Object.fromEntries(s.headcountByCountry.map((r) => [r.country, r.count]))).toEqual(Object.fromEntries(rows.map((r) => [r.country, num(r.n)])));
-    expect(s.headcountByCountry.map((r) => r.country)).toEqual(["BANGLADESH", "MALAYSIA", "SRI_LANKA", "CYPRUS"]);
+    const rows = await sql<{ country: string; n: bigint }>("SELECT co.shortcode AS country, COUNT(*) n FROM users u JOIN countries co ON co.id = u.country_id GROUP BY 1");
+    expect(Object.fromEntries(s.headcountByCountry.map((r) => [r.country.shortcode, r.count]))).toEqual(Object.fromEntries(rows.map((r) => [r.country, num(r.n)])));
+    // Every country is listed, by name, each as the row from the countries table.
+    expect(s.headcountByCountry.map((r) => r.country.shortcode)).toEqual(["BD", "CY", "MY", "LK"]);
+    expect(s.headcountByCountry.map((r) => r.country.name)).toEqual(["Bangladesh", "Cyprus", "Malaysia", "Sri Lanka"]);
     expect(s.headcountByCountry.reduce((a, r) => a + r.count, 0)).toBe(100);
-    expect(s.headcountByCountry.map((r) => r.count)).toEqual([40, 25, 20, 15]);
+    expect(s.headcountByCountry.map((r) => r.count)).toEqual([40, 15, 25, 20]);
   });
 
   it("requests by status, in workflow order", async () => {
@@ -103,10 +105,10 @@ describe("summary values match independent SQL (seeded data)", () => {
   it("onboarding task completion by country", async () => {
     const s = await getDashboardSummary(today);
     const rows = await sql<{ country: string; hires: bigint; total: bigint; done: bigint }>(
-      `SELECT u.country::text, COUNT(DISTINCT i.id) hires, COUNT(t.id) total, COUNT(t.id) FILTER (WHERE t.status='COMPLETED') done
-       FROM onboarding_instances i JOIN users u ON u.id = i.employee_id LEFT JOIN onboarding_tasks t ON t.instance_id = i.id GROUP BY 1`);
+      `SELECT co.shortcode AS country, COUNT(DISTINCT i.id) hires, COUNT(t.id) total, COUNT(t.id) FILTER (WHERE t.status='COMPLETED') done
+       FROM onboarding_instances i JOIN users u ON u.id = i.employee_id JOIN countries co ON co.id = u.country_id LEFT JOIN onboarding_tasks t ON t.instance_id = i.id GROUP BY 1`);
     for (const c of s.completionRateByCountry) {
-      const r = rows.find((x) => x.country === c.country);
+      const r = rows.find((x) => x.country === c.country.shortcode);
       expect(c.hires).toBe(num(r?.hires ?? 0));
       expect(c.tasksTotal).toBe(num(r?.total ?? 0));
       expect(c.tasksCompleted).toBe(num(r?.done ?? 0));
@@ -114,7 +116,7 @@ describe("summary values match independent SQL (seeded data)", () => {
       expect(c.completionRate).toBeGreaterThanOrEqual(0);
       expect(c.completionRate).toBeLessThanOrEqual(100);
     }
-    expect(s.completionRateByCountry.map((c) => c.country)).toEqual(["BANGLADESH", "MALAYSIA", "SRI_LANKA", "CYPRUS"]);
+    expect(s.completionRateByCountry.map((c) => c.country.shortcode)).toEqual(["BD", "CY", "MY", "LK"]);
     expect(s.completionRateByCountry.reduce((a, c) => a + c.hires, 0)).toBe(7);
   });
 
@@ -211,7 +213,7 @@ describe("cross-module insight: new hires waiting on IT", () => {
     await raise(hire, "IT_EQUIPMENT", "RESOLVED"); // resolved
     await raise(hire, "FACILITIES"); // open but not IT
     await raise(hire, "HR_QUERY"); // open but not IT
-    const veteran = (await db.user.findFirstOrThrow({ where: { id: { notIn: base.newHireIds }, role: "EMPLOYEE", status: "ACTIVE" } })).id;
+    const veteran = (await db.user.findFirstOrThrow({ where: { id: { notIn: base.newHireIds }, role: { code: "EMPLOYEE" }, status: { code: "ACTIVE" } } })).id;
     await raise(veteran, "IT_EQUIPMENT"); // IT, open, but not a new hire
     expect((await waiting()).count).toBe(before);
   });

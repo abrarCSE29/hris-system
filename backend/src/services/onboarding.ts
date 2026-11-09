@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { Country, OnboardingInstanceStatus, Prisma } from "@/generated/prisma/client";
+import { OnboardingInstanceStatus, Prisma } from "@/generated/prisma/client";
 import type { AuthUser } from "@/lib/auth";
 import { ApiError } from "@/lib/errors";
+import { requireLookupId } from "@/lib/lookup-ids";
 import { paginated, type Paging } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { isoDate } from "@/lib/validation";
@@ -21,7 +22,8 @@ export const createInstanceBody = z
   .strict();
 
 export const listInstancesQuery = z.object({
-  country: z.enum(Country).optional(),
+  /** Country of the employee, by id (from GET /meta). */
+  countryId: z.uuid().optional(),
   status: z.enum(OnboardingInstanceStatus).optional(),
 });
 
@@ -49,7 +51,7 @@ const factsOf = (t: TaskRow): TaskFacts => ({
   dueDate: toIsoDate(t.dueDate),
 });
 
-export const toTaskActor = (u: AuthUser): TaskActor => ({ id: u.id, role: u.role, departmentId: u.department.id });
+export const toTaskActor = (u: AuthUser): TaskActor => ({ id: u.id, role: u.role.code as TaskActor["role"], departmentId: u.department.id });
 
 /** A task as the API returns it: stored status plus the calculated Blocked / Overdue, and what the viewer may do. */
 export function serializeTask(t: TaskRow, today: string, viewer: AuthUser) {
@@ -153,7 +155,7 @@ export async function assignChecklist(actor: AuthUser, input: z.infer<typeof cre
 // ── reading checklists ───────────────────────────────────────────────────────
 
 const instanceInclude = {
-  employee: { select: { id: true, fullName: true, email: true, country: true, jobTitle: true, managerId: true, department: { select: { id: true, code: true, name: true } } } },
+  employee: { select: { id: true, fullName: true, email: true, country: { select: { id: true, shortcode: true, name: true } }, jobTitle: true, managerId: true, department: { select: { id: true, code: true, name: true } } } },
   template: { select: { id: true, name: true } },
   tasks: { include: taskInclude, orderBy: { sortOrder: "asc" } },
 } satisfies Prisma.OnboardingInstanceInclude;
@@ -188,8 +190,9 @@ export async function getMyChecklist(actor: AuthUser, today = todayInDhaka()) {
 }
 
 export async function listInstances(actor: AuthUser, q: z.infer<typeof listInstancesQuery>, paging: Paging, today = todayInDhaka()) {
+  await requireLookupId("country", q.countryId, "countryId");
   const where: Prisma.OnboardingInstanceWhereInput = {
-    AND: [scopeInstances(actor), { status: q.status, ...(q.country && { employee: { country: q.country } }) }],
+    AND: [scopeInstances(actor), { status: q.status, ...(q.countryId && { employee: { countryId: q.countryId } }) }],
   };
   const [rows, total] = await Promise.all([
     prisma.onboardingInstance.findMany({
@@ -223,7 +226,7 @@ export async function listTasks(actor: AuthUser, q: z.infer<typeof listTasksQuer
     : undefined;
 
   const where: Prisma.OnboardingTaskWhereInput = { AND: [scopeOwnedTasks(actor), byStatus, ...(byOverdue ? [byOverdue] : [])] };
-  const include = { ...taskInclude, instance: { select: { employee: { select: { id: true, fullName: true, country: true } } } } };
+  const include = { ...taskInclude, instance: { select: { employee: { select: { id: true, fullName: true, country: { select: { id: true, shortcode: true, name: true } } } } } } };
   const [rows, total] = await Promise.all([
     prisma.onboardingTask.findMany({ where, include, orderBy: [{ dueDate: "asc" }, { sortOrder: "asc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
     prisma.onboardingTask.count({ where }),

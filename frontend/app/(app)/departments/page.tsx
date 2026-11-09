@@ -7,7 +7,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiClientError } from "@/lib/api";
 import { roleSentence, sharePercent, statusSentence } from "@/lib/departments";
-import { labelize } from "@/lib/format";
 import { useDepartmentBreakdown } from "@/lib/hooks/departments";
 
 export default function DepartmentsPage() {
@@ -54,7 +53,7 @@ export default function DepartmentsPage() {
 
   const { total, departments } = q.data;
   const countries = departments[0]?.byCountry.map((c) => c.country) ?? [];
-  const countryTotal = (country: string) => departments.reduce((n, d) => n + (d.byCountry.find((c) => c.country === country)?.count ?? 0), 0);
+  const countryTotal = (countryId: string) => departments.reduce((n, d) => n + (d.byCountry.find((c) => c.country.id === countryId)?.count ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -68,8 +67,8 @@ export default function DepartmentsPage() {
               <TableHead className="text-right">People</TableHead>
               <TableHead className="hidden w-40 sm:table-cell">Share of company</TableHead>
               {countries.map((c) => (
-                <TableHead key={c} className="hidden text-right xl:table-cell">
-                  {labelize(c)}
+                <TableHead key={c.id} className="hidden text-right xl:table-cell">
+                  {c.name}
                 </TableHead>
               ))}
               <TableHead className="hidden md:table-cell">Status</TableHead>
@@ -97,7 +96,7 @@ export default function DepartmentsPage() {
                     </div>
                   </TableCell>
                   {d.byCountry.map((c) => (
-                    <TableCell key={c.country} className="hidden text-right tabular-nums xl:table-cell">
+                    <TableCell key={c.country.id} className="hidden text-right tabular-nums xl:table-cell">
                       {c.count}
                     </TableCell>
                   ))}
@@ -113,8 +112,8 @@ export default function DepartmentsPage() {
               <TableCell className="text-right font-medium tabular-nums">{total}</TableCell>
               <TableCell className="hidden sm:table-cell" />
               {countries.map((c) => (
-                <TableCell key={c} className="hidden text-right font-medium tabular-nums xl:table-cell">
-                  {countryTotal(c)}
+                <TableCell key={c.id} className="hidden text-right font-medium tabular-nums xl:table-cell">
+                  {countryTotal(c.id)}
                 </TableCell>
               ))}
               <TableCell className="hidden md:table-cell" />

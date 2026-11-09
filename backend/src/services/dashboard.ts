@@ -1,4 +1,6 @@
-import { Country, RequestStatus, type Prisma } from "@/generated/prisma/client";
+import { RequestStatus, type Prisma } from "@/generated/prisma/client";
+import { loadLookups } from "@/lib/lookup-lists";
+import type { CountryRef } from "@/lib/lookups";
 import { prisma } from "@/lib/prisma";
 import { todayInDhaka } from "./onboarding-logic";
 
@@ -13,16 +15,15 @@ export const IT_DEPARTMENT_CODE = "ITOPS";
 /** A request is open until it is resolved. */
 export const OPEN_REQUEST_STATUSES: RequestStatus[] = ["SUBMITTED", "ASSIGNED", "IN_PROGRESS"];
 
-const COUNTRIES = Object.values(Country);
 const STATUSES = Object.values(RequestStatus); // workflow order
 
 export async function getDashboardSummary(today = todayInDhaka()) {
   const todayDate = new Date(`${today}T00:00:00Z`);
   const inActiveChecklist: Prisma.OnboardingTaskWhereInput = { instance: { status: "ACTIVE" }, status: { not: "COMPLETED" } };
 
-  const [headcount, byStatus, categories, openByCategory, categoryTotals, activeHires, overdueTasks, blockedTasks, hiresWithOpenRequests, handlingDepartments, completion] =
+  const [headcount, byStatus, categories, openByCategory, categoryTotals, activeHires, overdueTasks, blockedTasks, hiresWithOpenRequests, handlingDepartments, completion, lookups] =
     await Promise.all([
-      prisma.user.groupBy({ by: ["country"], _count: true }),
+      prisma.user.groupBy({ by: ["countryId"], _count: true }),
       prisma.serviceRequest.groupBy({ by: ["status"], _count: true }),
       prisma.requestCategory.findMany({ select: { id: true, code: true, name: true }, orderBy: { name: "asc" } }),
       prisma.serviceRequest.groupBy({ by: ["categoryId"], where: { status: { in: OPEN_REQUEST_STATUSES } }, _count: true }),
@@ -39,7 +40,7 @@ export async function getDashboardSummary(today = todayInDhaka()) {
         select: {
           id: true,
           fullName: true,
-          country: true,
+          country: { select: { id: true, shortcode: true, name: true } },
           department: { select: { id: true, name: true } },
           onboardingInstances: { where: { status: "ACTIVE" }, select: { id: true } },
           submittedRequests: {
@@ -57,22 +58,23 @@ export async function getDashboardSummary(today = todayInDhaka()) {
         orderBy: { name: "asc" },
       }),
       // Task completion per hire's country, over every checklist (active and finished).
-      prisma.$queryRaw<{ country: Country; hires: bigint; tasks_total: bigint; tasks_done: bigint }[]>`
-        SELECT u.country::text AS country,
+      prisma.$queryRaw<{ country_id: string; hires: bigint; tasks_total: bigint; tasks_done: bigint }[]>`
+        SELECT u.country_id,
                COUNT(DISTINCT i.id) AS hires,
                COUNT(t.id) AS tasks_total,
                COUNT(t.id) FILTER (WHERE t.status = 'COMPLETED') AS tasks_done
         FROM onboarding_instances i
         JOIN users u ON u.id = i.employee_id
         LEFT JOIN onboarding_tasks t ON t.instance_id = i.id
-        GROUP BY u.country`,
+        GROUP BY u.country_id`,
+      loadLookups(),
     ]);
 
-  const headcountOf = (c: Country) => headcount.find((r) => r.country === c)?._count ?? 0;
+  const headcountOf = (c: CountryRef) => headcount.find((r) => r.countryId === c.id)?._count ?? 0;
   const statusCount = (st: RequestStatus) => byStatus.find((r) => r.status === st)?._count ?? 0;
   const byCat = (rows: { categoryId: string; _count: number }[], id: string) => rows.find((r) => r.categoryId === id)?._count ?? 0;
-  const completionOf = (c: Country) => {
-    const r = completion.find((x) => x.country === c);
+  const completionOf = (c: CountryRef) => {
+    const r = completion.find((x) => x.country_id === c.id);
     const total = Number(r?.tasks_total ?? 0);
     const done = Number(r?.tasks_done ?? 0);
     return {
@@ -88,7 +90,7 @@ export async function getDashboardSummary(today = todayInDhaka()) {
   return {
     asOf: today,
     // Every country / status / category is listed, with zeros, so charts never have missing bars.
-    headcountByCountry: COUNTRIES.map((c) => ({ country: c, count: headcountOf(c) })),
+    headcountByCountry: lookups.countries.map((c) => ({ country: c, count: headcountOf(c) })),
     requestsByStatus: STATUSES.map((s) => ({ status: s, count: statusCount(s) })),
     requestsByCategory: categories.map((c) => ({ category: c, count: byCat(categoryTotals, c.id), open: byCat(openByCategory, c.id) })),
     onboarding: { activeHires, overdueTasks, blockedTasks },
@@ -111,6 +113,6 @@ export async function getDashboardSummary(today = todayInDhaka()) {
       })
       .sort((a, b) => Number(b.department.code === IT_DEPARTMENT_CODE) - Number(a.department.code === IT_DEPARTMENT_CODE) || a.department.name.localeCompare(b.department.name)),
     // Cross-module: how far along onboarding is, by where the hire works.
-    completionRateByCountry: COUNTRIES.map(completionOf),
+    completionRateByCountry: lookups.countries.map(completionOf),
   };
 }

@@ -10,7 +10,6 @@ import { SelectField } from "@/components/select-field";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { PasswordInput } from "@/components/ui/password-input";
 import { ApiClientError } from "@/lib/api";
-import { labelize } from "@/lib/format";
 import { type NewUserInput, useCreateUser, useTemplates } from "@/lib/hooks/onboarding";
 import { useMeta, useUsers } from "@/lib/hooks/users";
 import type { CreatedUser } from "@/lib/types";
@@ -23,10 +22,12 @@ const today = () => new Date().toLocaleDateString("en-CA");
 export default function NewPersonPage() {
   const meta = useMeta();
   const templates = useTemplates();
-  const managers = useUsers({ role: "MANAGER", pageSize: 100 });
+  // Managers are found by the id of the Manager role, which comes from the role list (ids differ between databases).
+  const managerRoleId = meta.data?.roles.find((r) => r.code === "MANAGER")?.id;
+  const managers = useUsers({ roleId: managerRoleId, pageSize: 100 }, { enabled: !!managerRoleId });
   const create = useCreateUser();
 
-  const [form, setForm] = useState({ fullName: "", email: "", country: "", departmentId: "", managerId: "", jobTitle: "", joiningDate: today(), status: "ON_PROBATION" as "ACTIVE" | "ON_PROBATION", templateId: "", password: "" });
+  const [form, setForm] = useState({ fullName: "", email: "", countryId: "", roleId: "", departmentId: "", managerId: "", jobTitle: "", joiningDate: today(), statusCode: "ON_PROBATION" as "ACTIVE" | "ON_PROBATION", templateId: "", password: "" });
   const [created, setCreated] = useState<CreatedUser | null>(null);
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -40,7 +41,14 @@ export default function NewPersonPage() {
   const details = Array.isArray(err?.details) ? (err.details as { path: string; message: string }[]) : [];
   const fieldError = (p: string) => details.find((d) => d.path === p)?.message;
 
-  const ready = form.fullName.trim() && form.email.trim() && form.country && form.departmentId && form.managerId && form.jobTitle.trim() && form.joiningDate;
+  // The form picks Active or On probation; the server wants that status's id.
+  const statusId = meta.data?.userStatuses.find((s) => s.code === form.statusCode)?.id;
+
+  // Employee unless HR picks another role. The server wants the role's id.
+  const employeeRoleId = meta.data?.roles.find((r) => r.code === "EMPLOYEE")?.id ?? "";
+  const roleId = form.roleId || employeeRoleId;
+
+  const ready = form.fullName.trim() && form.email.trim() && form.countryId && form.departmentId && form.managerId && form.jobTitle.trim() && form.joiningDate;
 
   if (created) {
     return (
@@ -105,8 +113,10 @@ export default function NewPersonPage() {
         onSubmit={(e) => {
           e.preventDefault();
           const body: NewUserInput = {
-            fullName: form.fullName.trim(), email: form.email.trim(), country: form.country, departmentId: form.departmentId,
-            managerId: form.managerId, jobTitle: form.jobTitle.trim(), joiningDate: form.joiningDate, status: form.status,
+            fullName: form.fullName.trim(), email: form.email.trim(), countryId: form.countryId, departmentId: form.departmentId,
+            managerId: form.managerId, jobTitle: form.jobTitle.trim(), joiningDate: form.joiningDate,
+            ...(statusId && { statusId }),
+            ...(roleId && { roleId }),
             ...(form.templateId && { templateId: form.templateId }),
             ...(form.password && { password: form.password }),
           };
@@ -123,7 +133,7 @@ export default function NewPersonPage() {
           <div className="grid gap-5 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="country">Country</FieldLabel>
-              <SelectField id="country" required value={form.country} onValueChange={(v) => set({ country: v })} placeholder="Choose…" options={(meta.data?.enums.countries ?? []).map((c) => ({ value: c, label: labelize(c) }))} />
+              <SelectField id="country" required value={form.countryId} onValueChange={(v) => set({ countryId: v })} placeholder="Choose…" options={(meta.data?.countries ?? []).map((c) => ({ value: c.id, label: c.name }))} />
             </Field>
             <Field>
               <FieldLabel htmlFor="departmentId">Department</FieldLabel>
@@ -142,12 +152,24 @@ export default function NewPersonPage() {
             {input("joiningDate", "Joining date", { type: "date", required: true })}
           </div>
 
+          <Field data-invalid={fieldError("roleId") ? true : undefined}>
+            <FieldLabel htmlFor="roleId">Role</FieldLabel>
+            <SelectField
+              id="roleId"
+              value={roleId}
+              onValueChange={(v) => set({ roleId: v })}
+              invalid={!!fieldError("roleId")}
+              options={(meta.data?.roles ?? []).map((r) => ({ value: r.id, label: r.name }))}
+            />
+            {fieldError("roleId") ? <FieldError>{fieldError("roleId")}</FieldError> : <FieldDescription>What this person can do in the system. A Manager heads their department, and there is one per department.</FieldDescription>}
+          </Field>
+
           <Field>
             <FieldLabel htmlFor="status">Employment status</FieldLabel>
             <SelectField
               id="status"
-              value={form.status}
-              onValueChange={(v) => set({ status: v as "ACTIVE" | "ON_PROBATION" })}
+              value={form.statusCode}
+              onValueChange={(v) => set({ statusCode: v as "ACTIVE" | "ON_PROBATION" })}
               options={[{ value: "ON_PROBATION", label: "On probation" }, { value: "ACTIVE", label: "Active" }]}
             />
             <FieldDescription>New joiners usually start on probation. This does not change who counts as a new hire; that comes from the onboarding checklist.</FieldDescription>

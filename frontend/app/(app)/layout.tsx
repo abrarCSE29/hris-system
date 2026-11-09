@@ -21,7 +21,6 @@ import { ChatHead } from "@/components/chat/chat-head";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLogout, useMe } from "@/lib/hooks/auth";
 import { activeHref, navForRole } from "@/lib/nav";
-import { ROLE_LABEL } from "@/lib/types";
 
 /**
  * Navigation items sit flush against the sidebar's left edge with square left corners. The selected item alone
@@ -47,7 +46,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   const { user } = me.data;
-  const items = navForRole(user.role, { isNewHire: me.data.isNewHire });
+  const items = navForRole(user.role.code, { isNewHire: me.data.isNewHire });
   const current = activeHref(items, pathname);
 
   return (
@@ -85,7 +84,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="min-w-0 px-2">
             <div className="truncate text-sm font-medium">{user.fullName}</div>
             <div className="truncate text-xs text-sidebar-foreground/70">
-              {ROLE_LABEL[user.role]} · {user.department.name}
+              {user.role.name} · {user.department.name}
             </div>
           </div>
           <SidebarMenu>

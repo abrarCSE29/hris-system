@@ -7,25 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Role {
-  EMPLOYEE
-  MANAGER
-  HR_ADMIN
-}
-
-enum Country {
-  BANGLADESH
-  MALAYSIA
-  SRI_LANKA
-  CYPRUS
-}
-
-enum UserStatus {
-  ACTIVE
-  ON_PROBATION
-  ON_NOTICE
-}
-
 enum RequestCategoryCode {
   IT_EQUIPMENT
   SOFTWARE_ACCESS
@@ -113,21 +94,53 @@ model Department {
   @@map("departments")
 }
 
-model User {
-  id           String     @id @default(uuid()) @db.Uuid
-  employeeCode String     @unique @map("employee_code")
-  fullName     String     @map("full_name")
-  email        String     @unique
-  passwordHash String     @map("password_hash")
-  role         Role
-  country      Country
-  departmentId String     @map("department_id") @db.Uuid
-  managerId    String?    @map("manager_id") @db.Uuid
-  jobTitle     String     @map("job_title")
-  joiningDate  DateTime   @map("joining_date") @db.Date
-  status       UserStatus @default(ACTIVE)
-  createdAt    DateTime   @default(now()) @map("created_at")
+// Lookup tables for a user's role, country and status (spec docs/spec-lookup-tables.md). Behaviour compares on `code` (roles,
+// statuses) or `shortcode` (countries), never on the generated id. The app never writes to them; the migration and the seed do.
+model Role {
+  id    String @id @default(uuid()) @db.Uuid
+  code  String @unique
+  name  String
+  users User[]
 
+  @@map("roles")
+}
+
+model Country {
+  id        String @id @default(uuid()) @db.Uuid
+  shortcode String @unique
+  name      String
+  users     User[]
+
+  @@map("countries")
+}
+
+model UserStatus {
+  id    String @id @default(uuid()) @db.Uuid
+  code  String @unique
+  name  String
+  users User[]
+
+  @@map("user_statuses")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  employeeCode String   @unique @map("employee_code")
+  fullName     String   @map("full_name")
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  roleId       String   @map("role_id") @db.Uuid
+  countryId    String   @map("country_id") @db.Uuid
+  departmentId String   @map("department_id") @db.Uuid
+  managerId    String?  @map("manager_id") @db.Uuid
+  jobTitle     String   @map("job_title")
+  joiningDate  DateTime @map("joining_date") @db.Date
+  statusId     String   @map("status_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  country    Country    @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  status     UserStatus @relation(fields: [statusId], references: [id], onDelete: Restrict)
   department Department @relation("DepartmentMembers", fields: [departmentId], references: [id])
   manager    User?      @relation("Reporting", fields: [managerId], references: [id])
   reports    User[]     @relation("Reporting")
@@ -144,8 +157,8 @@ model User {
   completedTasks      OnboardingTask[]     @relation("TaskCompletedBy")
 
   @@index([managerId])
-  @@index([departmentId, status])
-  @@index([country])
+  @@index([departmentId, statusId])
+  @@index([countryId])
   @@map("users")
 }
 

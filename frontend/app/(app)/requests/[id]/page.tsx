@@ -10,7 +10,7 @@ import { Timeline } from "@/components/requests/timeline";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiClientError } from "@/lib/api";
-import { formatDateTime, labelize } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { useRequest } from "@/lib/hooks/requests";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -50,7 +50,7 @@ export default function RequestDetailPage() {
   }
 
   const details: [string, React.ReactNode][] = [
-    ["Requested by", `${r.requester.fullName} · ${labelize(r.requester.country)}`],
+    ["Requested by", `${r.requester.fullName} · ${r.requester.country.name}`],
     ["Category", r.category.name],
     ["Handled by", r.handlingDepartment.name],
     ["Assignee", r.assignee?.fullName ?? "Unassigned"],

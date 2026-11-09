@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
-import type { Role } from "@/generated/prisma/client";
 import { prisma } from "./prisma";
 import { serializeUser, userInclude, type PublicUser } from "./user-serializer";
 
@@ -81,7 +80,7 @@ export async function loadAuthUser(userId: string): Promise<AuthUser | null> {
     include: userInclude,
   });
   if (!u) return null;
-  return { ...serializeUser(u), headOfDepartmentId: u.role === "MANAGER" ? u.departmentId : null };
+  return { ...serializeUser(u), headOfDepartmentId: u.role.code === "MANAGER" ? u.departmentId : null };
 }
 
 /** The public shape returned to clients (spec §4.2); omits internal fields. */

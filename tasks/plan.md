@@ -205,3 +205,15 @@ T23 to T24 and T25 are independent and can be built in either order. T27 needs T
 ## Open questions
 
 - None at this time.
+
+## Lookup tables for role, country and status (spec: `docs/spec-lookup-tables.md`, idea: `docs/ideas/lookup-tables-user-fields.md`)
+
+Move `users.role`, `users.country` and `users.status` from enums to their own tables with foreign keys. The API returns the three as
+objects; filters take ids; behaviour compares on `code` / `shortcode`. No history, no edit screens.
+
+```
+T31 Schema + migration ─ T32 Backend reads and writes ─ T33 Seed and backend tests ─ T34 Frontend ─ T35 Docs + checkpoint
+```
+
+**Biggest risk:** the migration and about 24 backend and 26 frontend files that use the old values. Mitigation: the migration is tested
+on a copy with users in every combination and stops on any empty row; each task ends with the suites green before the next starts.

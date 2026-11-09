@@ -1,4 +1,5 @@
-import type { OnboardingTaskStatus, OwnerType, RequestStatus, Role, UserStatus } from "@/generated/prisma/client";
+import type { OnboardingTaskStatus, OwnerType, RequestStatus } from "@/generated/prisma/client";
+import type { RoleCode, StatusCode } from "@/lib/lookups";
 
 /**
  * Service-request workflow (spec §6.1). Pure functions: no database access, so the whole
@@ -9,7 +10,8 @@ export type RequestAction = "assign" | "start" | "resolve" | "close";
 
 export interface Actor {
   id: string;
-  role: Role;
+  /** The role's `code`. Callers pass `user.role.code`; this module stays free of database shapes. */
+  role: RoleCode;
   /** Department this user heads, if any. */
   headOfDepartmentId: string | null;
 }
@@ -25,7 +27,8 @@ export interface RequestState {
 export interface AssigneeCandidate {
   id: string;
   departmentId: string;
-  status: UserStatus;
+  /** The status's `code`. */
+  status: StatusCode;
 }
 
 interface Rule {
@@ -60,7 +63,7 @@ export type TransitionResult =
   /** `assign` needs a valid assignee (an active member of the handling department). */
   | { ok: false; reason: "invalid_assignee"; message: string };
 
-export const ASSIGNABLE_STATUSES: UserStatus[] = ["ACTIVE", "ON_PROBATION"];
+export const ASSIGNABLE_STATUSES: StatusCode[] = ["ACTIVE", "ON_PROBATION"];
 
 export function checkTransition(
   action: RequestAction,
@@ -109,7 +112,8 @@ export type TaskAction = "start" | "complete";
 
 export interface TaskActor {
   id: string;
-  role: Role;
+  /** The role's `code`. Callers pass `user.role.code`; this module stays free of database shapes. */
+  role: RoleCode;
   departmentId: string;
 }
 

@@ -37,13 +37,13 @@ describe("request seed", () => {
   });
 
   it("assigns every non-SUBMITTED request to an active member of the handling department", async () => {
-    const rows = await db.serviceRequest.findMany({ include: { assignee: true } });
+    const rows = await db.serviceRequest.findMany({ include: { assignee: { include: { status: true } } } });
     for (const r of rows) {
       if (r.status === "SUBMITTED") {
         expect(r.assigneeId).toBeNull();
       } else {
         expect(r.assignee?.departmentId).toBe(r.handlingDepartmentId);
-        expect(r.assignee?.status).not.toBe("ON_NOTICE");
+        expect(r.assignee?.status.code).not.toBe("ON_NOTICE");
       }
     }
   });

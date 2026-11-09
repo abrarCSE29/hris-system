@@ -1,5 +1,6 @@
 import { createPrismaClient } from "@/lib/create-prisma";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import type { RoleCode, StatusCode } from "@/lib/lookups";
 
 export const TEST_URL =
   process.env.TEST_DATABASE_URL ?? "postgresql://hris:hris@localhost:5433/hris_test";
@@ -24,20 +25,34 @@ export async function makeDepartment(name = `Dept ${++n}`) {
   return db.department.create({ data: { code: `D${++n}`, name } });
 }
 
-export async function makeUser(departmentId: string, overrides: Partial<Prisma.UserUncheckedCreateInput> = {}) {
+/** The id of a lookup row, by code (roles, statuses) or shortcode (countries). Ids differ between databases, so tests never write one down. */
+export const roleId = async (code: RoleCode) => (await db.role.findUniqueOrThrow({ where: { code } })).id;
+export const statusId = async (code: StatusCode) => (await db.userStatus.findUniqueOrThrow({ where: { code } })).id;
+export const countryId = async (shortcode: string) => (await db.country.findUniqueOrThrow({ where: { shortcode } })).id;
+
+type UserOverrides = Partial<Omit<Prisma.UserUncheckedCreateInput, "roleId" | "countryId" | "statusId">> & {
+  /** Role code (default EMPLOYEE), country shortcode (default BD) and status code (default ACTIVE). */
+  role?: RoleCode;
+  country?: string;
+  status?: StatusCode;
+};
+
+export async function makeUser(departmentId: string, overrides: UserOverrides = {}) {
   const i = ++n;
+  const { role = "EMPLOYEE", country = "BD", status = "ACTIVE", ...rest } = overrides;
   return db.user.create({
     data: {
       employeeCode: `E${i}`,
       fullName: `User ${i}`,
       email: `user${i}@example.com`,
       passwordHash: "x",
-      role: "EMPLOYEE",
-      country: "BANGLADESH",
+      roleId: await roleId(role),
+      countryId: await countryId(country),
+      statusId: await statusId(status),
       departmentId,
       jobTitle: "Engineer",
       joiningDate: new Date("2024-01-01"),
-      ...overrides,
+      ...rest,
     },
   });
 }

@@ -90,7 +90,7 @@ export async function createChatDraft(actor: AuthUser, input: z.infer<typeof cha
     result = await requestDraft(
       {
         message: input.message,
-        requesterCountry: actor.country,
+        requesterCountry: actor.country.name,
         requesterDepartment: actor.department.name,
         categories: categories.map((c) => ({
           code: c.code,

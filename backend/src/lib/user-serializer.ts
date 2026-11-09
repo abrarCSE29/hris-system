@@ -3,12 +3,15 @@ import type { Prisma } from "@/generated/prisma/client";
 /** Prisma include that every user response needs. */
 export const userInclude = {
   department: { select: { id: true, code: true, name: true } },
+  role: { select: { id: true, code: true, name: true } },
+  country: { select: { id: true, shortcode: true, name: true } },
+  status: { select: { id: true, code: true, name: true } },
 } satisfies Prisma.UserInclude;
 
-type UserWithDepartment = Prisma.UserGetPayload<{ include: typeof userInclude }>;
+type UserWithRelations = Prisma.UserGetPayload<{ include: typeof userInclude }>;
 
 /** The public user shape from the API spec (§4.2). Never includes the password hash. */
-export function serializeUser(u: UserWithDepartment) {
+export function serializeUser(u: UserWithRelations) {
   return {
     id: u.id,
     employeeCode: u.employeeCode,

@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiClientError } from "@/lib/api";
-import { formatDate, labelize } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { useMe } from "@/lib/hooks/auth";
 import { useDebounced } from "@/lib/hooks/use-debounced";
 import { useMeta, useUsers } from "@/lib/hooks/users";
@@ -32,22 +32,22 @@ export default function PeoplePage() {
 function People() {
   const me = useMe();
   const meta = useMeta();
-  const isHr = me.data?.user.role === "HR_ADMIN";
+  const isHr = me.data?.user.role.code === "HR_ADMIN";
 
   const [search, setSearch] = useState("");
-  const [country, setCountry] = useState("");
+  const [countryId, setCountryId] = useState("");
   // The Departments page links here with ?departmentId=…, which starts the department filter.
   const [departmentId, setDepartmentId] = useState(useSearchParams().get("departmentId") ?? "");
-  const [status, setStatus] = useState("");
+  const [statusId, setStatusId] = useState("");
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounced(search.trim());
 
   // Any filter change goes back to the first page.
-  useEffect(() => setPage(1), [debouncedSearch, country, departmentId, status]);
+  useEffect(() => setPage(1), [debouncedSearch, countryId, departmentId, statusId]);
 
-  const users = useUsers({ search: debouncedSearch, country, departmentId, status, page, pageSize: PAGE_SIZE });
+  const users = useUsers({ search: debouncedSearch, countryId, departmentId, statusId, page, pageSize: PAGE_SIZE });
   const total = users.data?.total ?? 0;
-  const filtered = Boolean(debouncedSearch || country || departmentId || status);
+  const filtered = Boolean(debouncedSearch || countryId || departmentId || statusId);
 
   const forbidden = users.error instanceof ApiClientError && users.error.status === 403;
 
@@ -81,9 +81,9 @@ function People() {
         </div>
         <FilterSelect
           label="All countries"
-          value={country}
-          onChange={setCountry}
-          options={(meta.data?.enums.countries ?? []).map((c) => ({ value: c, label: labelize(c) }))}
+          value={countryId}
+          onChange={setCountryId}
+          options={(meta.data?.countries ?? []).map((c) => ({ value: c.id, label: c.name }))}
         />
         <FilterSelect
           label="All departments"
@@ -93,9 +93,9 @@ function People() {
         />
         <FilterSelect
           label="All statuses"
-          value={status}
-          onChange={setStatus}
-          options={(meta.data?.enums.userStatuses ?? []).map((s) => ({ value: s, label: labelize(s, { title: false }) }))}
+          value={statusId}
+          onChange={setStatusId}
+          options={(meta.data?.userStatuses ?? []).map((s) => ({ value: s.id, label: s.name }))}
         />
         {filtered && (
           <Button
@@ -103,9 +103,9 @@ function People() {
             size="sm"
             onClick={() => {
               setSearch("");
-              setCountry("");
+              setCountryId("");
               setDepartmentId("");
-              setStatus("");
+              setStatusId("");
             }}
           >
             Clear filters
@@ -159,7 +159,7 @@ function People() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell">{u.department.name}</TableCell>
                   <TableCell className="hidden lg:table-cell">{u.jobTitle}</TableCell>
-                  <TableCell className="hidden sm:table-cell">{labelize(u.country)}</TableCell>
+                  <TableCell className="hidden sm:table-cell">{u.country.name}</TableCell>
                   <TableCell>
                     <StatusBadge status={u.status} />
                   </TableCell>

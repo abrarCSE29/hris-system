@@ -9,7 +9,7 @@ import { ownerLabel } from "@/components/onboarding/task-list";
 import { Pagination } from "@/components/pagination";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDate, labelize } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { useMe } from "@/lib/hooks/auth";
 import { useTaskQueue } from "@/lib/hooks/onboarding";
 import { DISPLAY_STATUS_LABEL } from "@/lib/onboarding";
@@ -20,7 +20,7 @@ const STATUS_OPTIONS = (["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED"] a
 
 export default function TaskQueuePage() {
   const me = useMe();
-  const isHr = me.data?.user.role === "HR_ADMIN";
+  const isHr = me.data?.user.role.code === "HR_ADMIN";
   const [status, setStatus] = useState("");
   const [overdue, setOverdue] = useState("");
   const [page, setPage] = useState(1);
@@ -78,14 +78,14 @@ export default function TaskQueuePage() {
                 </div>
                 <p className="text-sm">
                   For{" "}
-                  {isHr || me.data?.user.role === "MANAGER" ? (
+                  {isHr || me.data?.user.role.code === "MANAGER" ? (
                     <Link href={`/onboarding/instances/${t.instanceId}`} className="underline underline-offset-4">
                       {t.employee.fullName}
                     </Link>
                   ) : (
                     t.employee.fullName
                   )}{" "}
-                  <span className="text-muted-foreground">· {labelize(t.employee.country)}</span>
+                  <span className="text-muted-foreground">· {t.employee.country.name}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {ownerLabel(t)} · Due {formatDate(t.dueDate)}

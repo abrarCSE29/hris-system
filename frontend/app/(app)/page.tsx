@@ -10,7 +10,7 @@ export default function Home() {
   const router = useRouter();
   const me = useMe();
   useEffect(() => {
-    if (me.data) router.replace(homeForRole(me.data.user.role));
+    if (me.data) router.replace(homeForRole(me.data.user.role.code));
   }, [me.data, router]);
   return null;
 }

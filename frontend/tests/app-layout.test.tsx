@@ -27,8 +27,8 @@ afterEach(cleanup);
 
 const asUser = (role: Role, isNewHire = false): MeResponse => ({
   user: {
-    id: "u1", employeeCode: "EMP-0001", fullName: "Ana Perera", email: "ana@hris.test", role, country: "CYPRUS",
-    department: { id: "d1", code: "ENG", name: "Engineering" }, managerId: null, jobTitle: "Engineer", status: "ACTIVE", joiningDate: "2026-01-01",
+    id: "u1", employeeCode: "EMP-0001", fullName: "Ana Perera", email: "ana@hris.test", role: { id: "role-" + role, code: role, name: role === "HR_ADMIN" ? "HR Admin" : role === "MANAGER" ? "Manager" : "Employee" }, country: { id: "c-cy", shortcode: "CY", name: "Cyprus" },
+    department: { id: "d1", code: "ENG", name: "Engineering" }, managerId: null, jobTitle: "Engineer", status: { id: "s-active", code: "ACTIVE", name: "Active" }, joiningDate: "2026-01-01",
   },
   isNewHire,
   headOfDepartmentId: null,

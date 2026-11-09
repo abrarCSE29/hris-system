@@ -74,7 +74,7 @@ export default function DashboardPage() {
         <BarCard
           title="Headcount by country"
           description="Everyone on the books today."
-          data={s.headcountByCountry.map((c) => ({ name: labelize(c.country), count: c.count }))}
+          data={s.headcountByCountry.map((c) => ({ name: c.country.name, count: c.count }))}
           series={[{ key: "count", label: "People", color: "var(--chart-2)", labelColor: "var(--background)" }]}
         />
         <BarCard

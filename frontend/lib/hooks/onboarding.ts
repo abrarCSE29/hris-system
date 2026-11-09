@@ -13,7 +13,7 @@ export function useMyOnboarding() {
   return useQuery({ queryKey: [KEY, "me"], queryFn: () => api<InstanceDetail | null>("/onboarding/me") });
 }
 
-export interface InstanceFilters { country?: string; status?: string; page?: number; pageSize?: number }
+export interface InstanceFilters { countryId?: string; status?: string; page?: number; pageSize?: number }
 export function useInstances(filters: InstanceFilters) {
   return useQuery({
     queryKey: [KEY, "instances", filters],
@@ -112,13 +112,15 @@ export function useAssignChecklist() {
 export interface NewUserInput {
   fullName: string;
   email: string;
-  country: string;
+  countryId: string;
+  /** Id of the role (from `useMeta().roles`); defaults to Employee on the server when omitted. */
+  roleId?: string;
   departmentId: string;
   managerId: string;
   jobTitle: string;
   joiningDate: string;
-  /** Defaults to ON_PROBATION on the server when omitted. */
-  status?: "ACTIVE" | "ON_PROBATION";
+  /** Id of the status (Active or On probation); defaults to On probation on the server when omitted. */
+  statusId?: string;
   templateId?: string;
   password?: string;
 }

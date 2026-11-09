@@ -1,4 +1,4 @@
-import type { Role } from "@/generated/prisma/client";
+import type { RoleCode } from "./lookups";
 import { getAuthUser, type AuthUser } from "./auth";
 import { ApiError, toErrorResponse } from "./errors";
 
@@ -19,13 +19,13 @@ interface RouteContext<P> {
  */
 export function withAuth<P = Record<string, never>>(
   handler: (req: Request, ctx: AuthContext<P>) => Promise<Response> | Response,
-  options: { roles?: Role[] } = {},
+  options: { roles?: RoleCode[] } = {},
 ) {
   return async (req: Request, ctx?: RouteContext<P>): Promise<Response> => {
     try {
       const user = await getAuthUser(req);
       if (!user) throw new ApiError("UNAUTHORIZED", "Authentication required");
-      if (options.roles && !options.roles.includes(user.role)) {
+      if (options.roles && !options.roles.includes(user.role.code as RoleCode)) {
         throw new ApiError("FORBIDDEN", "You do not have access to this resource");
       }
       return await handler(req, { user, params: ctx?.params ?? Promise.resolve({} as P) });

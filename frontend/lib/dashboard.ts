@@ -1,8 +1,8 @@
-import type { RequestPriority, RequestStatus } from "./types";
+import type { CountryRef, RequestPriority, RequestStatus } from "./types";
 
 export interface DashboardSummary {
   asOf: string;
-  headcountByCountry: { country: string; count: number }[];
+  headcountByCountry: { country: CountryRef; count: number }[];
   requestsByStatus: { status: RequestStatus; count: number }[];
   requestsByCategory: { category: { id: string; code: string; name: string }; count: number; open: number }[];
   onboarding: { activeHires: number; overdueTasks: number; blockedTasks: number };
@@ -13,13 +13,13 @@ export interface DashboardSummary {
     hires: {
       id: string;
       fullName: string;
-      country: string;
+      country: CountryRef;
       department: { id: string; name: string };
       instanceId: string;
       openRequests: { id: string; reference: string; title: string; status: RequestStatus; priority: RequestPriority }[];
     }[];
   }[];
-  completionRateByCountry: { country: string; hires: number; tasksTotal: number; tasksCompleted: number; completionRate: number }[];
+  completionRateByCountry: { country: CountryRef; hires: number; tasksTotal: number; tasksCompleted: number; completionRate: number }[];
 }
 
 export const totalPeople = (s: DashboardSummary) => s.headcountByCountry.reduce((sum, c) => sum + c.count, 0);

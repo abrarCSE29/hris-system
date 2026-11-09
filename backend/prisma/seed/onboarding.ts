@@ -98,7 +98,7 @@ export async function seedOnboarding(db: PrismaClient, base: Base) {
 
     const owners = async (t: (typeof tplTasks)[number]) => {
       if (t.ownerType === "MANAGER") return hire.managerId!;
-      const members = await db.user.findMany({ where: { departmentId: t.ownerDepartmentId!, status: { not: "ON_NOTICE" } }, select: { id: true }, orderBy: { employeeCode: "asc" } });
+      const members = await db.user.findMany({ where: { departmentId: t.ownerDepartmentId!, status: { code: { not: "ON_NOTICE" } } }, select: { id: true }, orderBy: { employeeCode: "asc" } });
       return members[Math.floor(rand() * members.length)].id;
     };
 

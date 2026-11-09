@@ -5,7 +5,7 @@ import { GET as getMeta } from "../app/api/v1/meta/route";
 import { GET as getUsers } from "../app/api/v1/users/route";
 import { clearAll, seedBase } from "../prisma/seed/base";
 import { SESSION_COOKIE, signSession } from "@/lib/auth";
-import { db } from "./db";
+import { countryId, db, roleId, statusId } from "./db";
 
 let ids: Awaited<ReturnType<typeof seedBase>>;
 let engHeadId: string;
@@ -16,7 +16,7 @@ beforeAll(async () => {
   ids = await seedBase(db, await bcrypt.hash("x", 4));
   const eng = await db.department.findUniqueOrThrow({ where: { code: "ENG" } });
   engHeadId = eng.headId!;
-  employeeId = (await db.user.findFirstOrThrow({ where: { role: "EMPLOYEE", status: "ACTIVE" } })).id;
+  employeeId = (await db.user.findFirstOrThrow({ where: { role: { code: "EMPLOYEE" }, status: { code: "ACTIVE" } } })).id;
 });
 afterAll(() => db.$disconnect());
 
@@ -60,23 +60,29 @@ describe("GET /users", () => {
   });
 
   it("does not let a Manager widen their scope with filters or search", async () => {
-    const outsider = await db.user.findFirstOrThrow({ where: { managerId: { not: ids.personas.manager }, role: "EMPLOYEE" } });
+    const outsider = await db.user.findFirstOrThrow({ where: { managerId: { not: ids.personas.manager }, role: { code: "EMPLOYEE" } } });
     const bySearch = await json(await getUsers(await as(ids.personas.manager, `/api/v1/users?search=${encodeURIComponent(outsider.email)}`)));
     expect(bySearch.total).toBe(0);
-    const byDept = await json(await getUsers(await as(ids.personas.manager, `/api/v1/users?departmentId=${outsider.departmentId}&country=${outsider.country}`)));
+    const byDept = await json(await getUsers(await as(ids.personas.manager, `/api/v1/users?departmentId=${outsider.departmentId}&countryId=${outsider.countryId}`)));
     expect(byDept.data.every((u: any) => u.managerId === ids.personas.manager)).toBe(true);
   });
 
   it("filters by country, status, department and combinations", async () => {
     const hr = ids.personas.hrAdmin;
-    expect((await json(await getUsers(await as(hr, "/api/v1/users?country=MALAYSIA")))).total).toBe(25);
-    expect((await json(await getUsers(await as(hr, "/api/v1/users?status=ON_NOTICE")))).total).toBe(4);
-    expect((await json(await getUsers(await as(hr, "/api/v1/users?role=MANAGER")))).total).toBe(7);
-    expect((await json(await getUsers(await as(hr, "/api/v1/users?role=HR_ADMIN")))).total).toBe(3);
-    expect((await getUsers(await as(hr, "/api/v1/users?role=BOSS"))).status).toBe(422);
+    const list = async (qs: string) => json(await getUsers(await as(hr, `/api/v1/users?${qs}`)));
+    expect((await list(`countryId=${await countryId("MY")}`)).total).toBe(25);
+    expect((await list(`statusId=${await statusId("ON_NOTICE")}`)).total).toBe(4);
+    expect((await list(`roleId=${await roleId("MANAGER")}`)).total).toBe(7);
+    expect((await list(`roleId=${await roleId("HR_ADMIN")}`)).total).toBe(3);
+    // Filters take ids: a code is not an id, and an id that does not exist is a 422 that names the field.
+    expect((await getUsers(await as(hr, "/api/v1/users?roleId=MANAGER"))).status).toBe(422);
+    const unknown = await getUsers(await as(hr, `/api/v1/users?roleId=${crypto.randomUUID()}`));
+    expect(unknown.status).toBe(422);
+    expect((await json(unknown)).error.details[0].path).toBe("roleId");
     expect((await json(await getUsers(await as(hr, `/api/v1/users?departmentId=${ids.departmentIds.ENG}`)))).total).toBe(30);
-    const both = await json(await getUsers(await as(hr, `/api/v1/users?departmentId=${ids.departmentIds.ENG}&country=CYPRUS`)));
-    expect(both.data.every((u: any) => u.country === "CYPRUS" && u.department.code === "ENG")).toBe(true);
+    const both = await json(await getUsers(await as(hr, `/api/v1/users?departmentId=${ids.departmentIds.ENG}&countryId=${await countryId("CY")}`)));
+    expect(both.data.length).toBeGreaterThan(0);
+    expect(both.data.every((u: any) => u.country.shortcode === "CY" && u.department.code === "ENG")).toBe(true);
   });
 
   it("searches name, email and employee code case-insensitively", async () => {
@@ -92,8 +98,8 @@ describe("GET /users", () => {
 
   it("treats empty filter params as absent and rejects invalid values with 422", async () => {
     const hr = ids.personas.hrAdmin;
-    expect((await json(await getUsers(await as(hr, "/api/v1/users?country=&search=&status=")))).total).toBe(100);
-    expect((await getUsers(await as(hr, "/api/v1/users?country=ATLANTIS"))).status).toBe(422);
+    expect((await json(await getUsers(await as(hr, "/api/v1/users?countryId=&search=&statusId=")))).total).toBe(100);
+    expect((await getUsers(await as(hr, "/api/v1/users?countryId=ATLANTIS"))).status).toBe(422);
     expect((await getUsers(await as(hr, "/api/v1/users?departmentId=not-a-uuid"))).status).toBe(422);
   });
 
@@ -108,9 +114,9 @@ describe("GET /users/assignable", () => {
 
   it("lets HR list any department, excluding people on notice", async () => {
     const body = await json(await getAssignable(await as(ids.personas.hrAdmin, url(ids.departmentIds.ENG))));
-    const expected = await db.user.count({ where: { departmentId: ids.departmentIds.ENG, status: { in: ["ACTIVE", "ON_PROBATION"] } } });
+    const expected = await db.user.count({ where: { departmentId: ids.departmentIds.ENG, status: { code: { in: ["ACTIVE", "ON_PROBATION"] } } } });
     expect(body.data).toHaveLength(expected);
-    const onNotice = await db.user.findMany({ where: { departmentId: ids.departmentIds.ENG, status: "ON_NOTICE" } });
+    const onNotice = await db.user.findMany({ where: { departmentId: ids.departmentIds.ENG, status: { code: "ON_NOTICE" } } });
     for (const u of onNotice) expect(body.data.map((x: any) => x.id)).not.toContain(u.id);
     expect(Object.keys(body.data[0]).sort()).toEqual(["employeeCode", "fullName", "id", "jobTitle"]);
   });
@@ -142,8 +148,12 @@ describe("GET /meta", () => {
     expect(body.requestCategories).toHaveLength(5);
     const it = body.requestCategories.find((c: any) => c.code === "IT_EQUIPMENT");
     expect(it.handlingDepartmentId).toBe(ids.departmentIds.ITOPS);
-    expect(body.enums.countries).toEqual(["BANGLADESH", "MALAYSIA", "SRI_LANKA", "CYPRUS"]);
+    // The three lookup lists carry ids for filters and forms; roles and statuses in natural order, countries by name.
+    expect(body.roles.map((r: any) => r.code)).toEqual(["EMPLOYEE", "MANAGER", "HR_ADMIN"]);
+    expect(body.userStatuses.map((s: any) => s.code)).toEqual(["ACTIVE", "ON_PROBATION", "ON_NOTICE"]);
+    expect(body.countries.map((c: any) => [c.shortcode, c.name])).toEqual([["BD", "Bangladesh"], ["CY", "Cyprus"], ["MY", "Malaysia"], ["LK", "Sri Lanka"]]);
+    for (const row of [...body.roles, ...body.userStatuses, ...body.countries]) expect(row.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(body.enums.roles).toBeUndefined();
     expect(body.enums.requestStatuses).toEqual(["SUBMITTED", "ASSIGNED", "IN_PROGRESS", "RESOLVED", "CLOSED"]);
-    expect(body.enums.roles).toContain("HR_ADMIN");
   });
 });
