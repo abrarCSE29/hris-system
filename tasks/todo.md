@@ -473,3 +473,63 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Checkpoint: AI chat draft complete
 - [ ] All acceptance criteria met; all test suites pass; no automated test calls Gemini
 - [ ] Ready for review
+
+## Phase 6: Lookup tables (spec: docs/spec-lookup-tables.md, approved v2). T31 done
+
+### Task 31: Tables, columns and the migration
+**Description:** Add `roles`, `countries`, `user_statuses`; add `role_id`, `country_id`, `status_id` to `users`; backfill; drop the enum columns and types. Hand-written migration (see spec).
+**Acceptance criteria:**
+- [x] The three tables with seed rows, unique codes, a two-capital-letter shortcode check, row-level security on
+- [x] Every user backfilled; the migration stops if any is empty; foreign keys `ON DELETE RESTRICT`; indexes replaced
+- [x] Old columns and enums gone; Prisma client regenerated
+**Verification:**
+- [x] Migration test on a database with users in every old role, country and status; the drift check is empty
+**Done:** `backend/prisma/migrations/20261110090000_user_lookup_tables/`, `backend/tests/migration-lookup-tables.test.ts` (6 tests, mutation-checked). Applied to the test database only; the dev database is **not** migrated yet, so the user's running dev servers stay on the old shape until T32 and T33 are done. The rest of the backend does not compile until T32/T33 (188 type errors, the worklist).
+**Dependencies:** none
+**Files:** `backend/prisma/schema.prisma`, a new migration, `backend/tests/schema.test.ts`
+**Scope:** M
+
+### Task 32: Backend reads and writes
+**Description:** Serializer, `loadAuthUser`, `/meta`, users list and create, department breakdown, dashboard (including the raw SQL), policy, onboarding, requests, intake and state machine use the new relations; compare on `code`.
+**Acceptance criteria:**
+- [ ] Every response that returns a user has the three objects; `/meta` returns `roles`, `countries`, `userStatuses`
+- [ ] Filters `roleId`, `countryId`, `statusId` take ids; unknown or malformed gives 422 with the path; create user takes `countryId` and optional `statusId`
+- [ ] Permissions are unchanged; the token is unchanged (the role is still read from the database)
+**Verification:**
+- [ ] Vitest; no query per user (relations loaded together)
+**Dependencies:** T31
+**Files:** `backend/src/lib/*`, `backend/src/services/*`, `backend/app/api/v1/meta/route.ts`
+**Scope:** L
+
+### Task 33: Seed and backend tests
+**Description:** The seed creates the lookup rows first and refers to them by code; test helpers and assertions use the new shape.
+**Acceptance criteria:**
+- [ ] The seed still produces 7 Managers, 3 HR Admins and 90 Employees; all backend tests pass
+- [ ] No test or seed hard-codes a generated id
+**Verification:**
+- [ ] `npm test` in `backend/`
+**Dependencies:** T32
+**Files:** `backend/prisma/seed/*`, `backend/tests/*`
+**Scope:** L
+
+### Task 34: Frontend
+**Description:** Types, hooks, pages and components show `name`, compare on `code`, and send ids in filters and forms.
+**Acceptance criteria:**
+- [ ] The people, department, dashboard and onboarding screens look and behave as before
+- [ ] Filters and the new-user form send ids taken from `/meta`
+**Verification:**
+- [ ] `npx tsc --noEmit`; `npx vitest run`; manual in the browser
+**Dependencies:** T32
+**Files:** `frontend/lib/types.ts`, `frontend/lib/hooks/*`, `frontend/app/**`, `frontend/components/**`, `frontend/tests/*`
+**Scope:** L
+
+### Task 35: Docs
+**Description:** Update `docs/architecture-v1.md` (data model and API) and the README.
+**Acceptance criteria:**
+- [ ] Docs describe the three tables, the object shape, the id filters
+**Dependencies:** T33, T34
+**Scope:** S
+
+### Checkpoint: Lookup tables complete
+- [ ] All acceptance criteria met; both test suites and the type-check pass; drift check empty
+- [ ] Ready for review
