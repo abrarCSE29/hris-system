@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError, api } from "@/lib/api";
+import { formatDuration } from "@/lib/team";
 import { activeHref, homeForRole, navForRole } from "@/lib/nav";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -21,6 +22,7 @@ describe("navForRole", () => {
   it("lands HR on the dashboard and others on requests", () => {
     expect(homeForRole("HR_ADMIN")).toBe("/dashboard");
     expect(homeForRole("EMPLOYEE")).toBe("/requests");
+    expect(homeForRole("MANAGER")).toBe("/team");
   });
 });
 
@@ -163,5 +165,27 @@ describe("prefersReducedMotion", () => {
   it("defaults to motion allowed where matchMedia is unavailable", () => {
     expect(prefersReducedMotion(undefined)).toBe(false);
     expect(prefersReducedMotion({})).toBe(false);
+  });
+});
+
+describe("navForRole: team dashboard", () => {
+  it("is for Managers only, and comes first for them", () => {
+    expect(navForRole("MANAGER").map((i) => i.href)[0]).toBe("/team");
+    expect(navForRole("HR_ADMIN").map((i) => i.href)).not.toContain("/team");
+    expect(navForRole("EMPLOYEE").map((i) => i.href)).not.toContain("/team");
+  });
+});
+
+describe("formatDuration", () => {
+  it("shows hours under a day, and days and hours above", () => {
+    expect(formatDuration(null)).toBe("—");
+    expect(formatDuration(0)).toBe("0 h");
+    expect(formatDuration(6)).toBe("6 h");
+    expect(formatDuration(6.4)).toBe("6 h");
+    expect(formatDuration(23.6)).toBe("1 d");
+    expect(formatDuration(24)).toBe("1 d");
+    expect(formatDuration(45)).toBe("1 d 21 h");
+    expect(formatDuration(52.8)).toBe("2 d 5 h");
+    expect(formatDuration(120)).toBe("5 d");
   });
 });

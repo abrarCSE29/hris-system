@@ -52,6 +52,13 @@ describe("app shell (shadcn Sidebar)", () => {
     expect(screen.queryByRole("button", { name: /assistant/ })).toBeNull();
   });
 
+  it("shows a Manager the team dashboard first", () => {
+    me = asUser("MANAGER");
+    render(<AppLayout>x</AppLayout>);
+    expect(links()[0]).toBe("Team dashboard");
+    expect(links()).not.toContain("Dashboard");
+  });
+
   it("shows an HR Admin every management page", () => {
     me = asUser("HR_ADMIN");
     render(<AppLayout><p>page body</p></AppLayout>);
