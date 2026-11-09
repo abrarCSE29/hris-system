@@ -545,3 +545,58 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Checkpoint: Lookup tables complete
 - [x] All acceptance criteria met; both test suites and the type-check pass; drift check empty
 - [ ] Ready for review
+
+---
+
+## System logs (spec: `docs/spec-system-logs.md`)
+
+### Task 37: Logger and redaction
+**Description:** `backend/src/lib/logger.ts`: `log(level, event, fields)` writes one JSON line to stdout; `redact(text)` strips secrets and personal values from error text.
+**Acceptance criteria:**
+- [ ] One JSON object per line; reserved key names cannot overwrite `ts`, `level`, `event`; `LOG_LEVEL` respected; a circular field does not throw
+- [ ] `redact` removes a JWT, `Bearer` values, `key=` / `token=` query values, email addresses and bcrypt hashes, and cuts at a length limit (stack 8,000)
+**Verification:**
+- [ ] `npm test` in `backend/`; tests written first
+**Files:** `backend/src/lib/logger.ts`, `backend/tests/logger.test.ts`
+**Scope:** S
+
+### Task 38: The `withRequest` wrapper
+**Description:** One wrapper for every route: request id (valid incoming `x-request-id` kept, else generated), timing, error conversion, the `http.request` line, and an `http.error` record with redacted stack for unexpected errors. `withAuth` is built on it; login, logout and health use it.
+**Acceptance criteria:**
+- [ ] Every response carries `x-request-id`; error bodies carry `error.requestId`; a 500 body has no stack or message
+- [ ] The request line has method, route **pattern**, status, ms, `userId`; levels info / warn / error by status; `/health` logs nothing
+- [ ] All existing route tests pass unchanged
+**Dependencies:** T37
+**Files:** `backend/src/lib/{with-request,with-auth,errors}.ts`, `backend/app/api/v1/{auth/login,auth/logout,health}/route.ts`, `backend/tests/logging.test.ts`
+**Scope:** M
+
+### Task 39: Security events
+**Description:** `auth.login_failed`, `auth.login`, `auth.logout`, `auth.session_invalid`, `auth.forbidden`, each with request id, route, user id when known, `ip` and `userAgent` (truncated 64 / 300).
+**Acceptance criteria:**
+- [ ] A failed login logs no email, no hash of it and no password
+- [ ] A 403 logs the user id; a 401 on a request that sent a cookie logs `auth.session_invalid`
+- [ ] A test with a password in the body, a cookie and a long chat message finds none of them in the output (mutation-checked)
+**Dependencies:** T38
+**Files:** `backend/src/lib/with-request.ts`, `backend/app/api/v1/auth/*`, `backend/tests/logging.test.ts`
+**Scope:** M
+
+### Task 40: Replace `console.error`; share the request id
+**Description:** Both existing `console.error` calls use the logger; the AI call uses the request's id; the frontend error type gains optional `requestId`.
+**Acceptance criteria:**
+- [ ] No `console.error` remains in `backend/src`
+- [ ] A chat draft's `chat_drafts.request_id` equals the response's `x-request-id`
+- [ ] Backend and frontend tests and `tsc` pass
+**Dependencies:** T38
+**Files:** `backend/src/services/intake.ts`, `backend/src/lib/ai-client.ts`, `frontend/lib/types.ts`
+**Scope:** S
+
+### Task 41: Docs
+**Description:** `docs/architecture-v1.md` and the README: what is logged, what is never logged, how to find a request by its id.
+**Acceptance criteria:**
+- [ ] Docs describe the lines, the request id and the never-logged list
+**Dependencies:** T39, T40
+**Scope:** S
+
+### Checkpoint: System logs complete
+- [ ] All spec success criteria met; backend and frontend suites and type-check pass
+- [ ] Ready for review

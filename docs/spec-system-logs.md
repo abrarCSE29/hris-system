@@ -1,6 +1,6 @@
 # Spec: system logs for the backend
 
-Status: **v2, draft for your review.** v2: no database table (your decision); logs go to stdout only. Source: the conversation on `feature/system-logs`.
+Status: **v3.** v3: you decided to keep the IP address in security-event lines and to accept stdout-only retention for now. v2: no database table (your decision); logs go to stdout only. Source: the conversation on `feature/system-logs`.
 Related: `docs/architecture-v1.md`, `ai-service/app/logging.py` (the pattern to follow), `backend/src/lib/{with-auth,errors}.ts`.
 
 ## Objective
@@ -45,8 +45,7 @@ for which user, on which route, and the error with its stack, without reproducin
    cannot overwrite `ts`, `level` or `event` (the AI service has a test for the same crash). The level threshold comes from `LOG_LEVEL`
    (default `info`). A logging failure never changes a response: the logger catches its own errors. The two existing `console.error` calls move to it.
 9. **No new dependency.** The logger is about 60 lines over `console.log(JSON.stringify(...))`. A library (`pino`) is not needed at this size.
-10. **Retention and search are the host's.** Logs live as long as the host (Vercel) keeps stdout, which is short. This is known and accepted for
-    now; if longer keeping or searching is needed later, a log drain to an outside service reads this same JSON without code changes.
+10. **Retention and search are the host's** (your decision: fine for now). Logs live as long as the host (Vercel) keeps stdout, which is short; if longer keeping or searching is needed later, a log drain to an outside service reads this same JSON without code changes.
 11. **Sampling is off.** At ~100 users every request line is kept.
 12. **Tests never touch an outside service.** Tests capture stdout.
 
@@ -127,6 +126,5 @@ Handlers that need the user id for the log get it from the context `withAuth` al
 
 ## Open questions
 
-1. **IP address:** `ip` is personal data. Keep it in the security-event lines (useful for attack patterns, same as `chat_drafts`), or leave it out?
-2. **Security events:** is the list in item 6 right? A successful login is one `info` line per sign-in.
-3. **Retention:** with stdout only, how long logs last depends on the Vercel plan. Fine for now, or should something longer-lived be planned?
+- None blocking. Decided: IP address kept in security-event lines; stdout-only retention accepted for now. The security-event list in item 6
+  stands unless you change it.

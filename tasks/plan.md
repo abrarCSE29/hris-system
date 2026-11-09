@@ -217,3 +217,15 @@ T31 Schema + migration ─ T32 Backend reads and writes ─ T33 Seed and backend
 
 **Biggest risk:** the migration and about 24 backend and 26 frontend files that use the old values. Mitigation: the migration is tested
 on a copy with users in every combination and stops on any empty row; each task ends with the suites green before the next starts.
+
+## System logs for the backend (spec: `docs/spec-system-logs.md`)
+
+Structured JSON logging to stdout: a wrapper that gives every request an id and logs it, a full redacted record for every 500, and
+security events. No database table, no migration, no new dependency.
+
+```
+T37 Logger + redaction ─ T38 withRequest wrapper (request line, request id, 500 record) ─ T39 Security events ─ T40 Replace console.error, AI request id, frontend type ─ T41 Docs + checkpoint
+```
+
+**Biggest risk:** leaking personal data or secrets into logs (error text echoes values) and changing responses that tests rely on.
+Mitigation: redaction is its own task with tests first; a "never logged" test is mutation-checked; every existing route test must pass unchanged.
