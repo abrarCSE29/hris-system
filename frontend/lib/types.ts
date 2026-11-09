@@ -125,6 +125,8 @@ export type TaskStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
 /** Stored status plus the calculated BLOCKED. */
 export type DisplayStatus = TaskStatus | "BLOCKED";
 export type TaskAction = "start" | "complete";
+/** What the server may offer someone on a task: work it (start / complete) or, for the department head and HR, assign it. */
+export type TaskAllowedAction = TaskAction | "assign";
 
 export interface OnboardingTask {
   id: string;
@@ -143,7 +145,7 @@ export interface OnboardingTask {
   completedAt: string | null;
   completedBy: { id: string; fullName: string } | null;
   sortOrder: number;
-  allowedActions: TaskAction[];
+  allowedActions: TaskAllowedAction[];
 }
 
 export interface Progress {

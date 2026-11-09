@@ -23,18 +23,19 @@ export default function TaskQueuePage() {
   const isHr = me.data?.user.role.code === "HR_ADMIN";
   const [status, setStatus] = useState("");
   const [overdue, setOverdue] = useState("");
+  const [assigned, setAssigned] = useState("");
   const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [status, overdue]);
+  useEffect(() => setPage(1), [status, overdue, assigned]);
 
-  const q = useTaskQueue({ status, overdue, page, pageSize: PAGE_SIZE });
-  const filtered = Boolean(status || overdue);
+  const q = useTaskQueue({ status, overdue, assigned, page, pageSize: PAGE_SIZE });
+  const filtered = Boolean(status || overdue || assigned);
 
   return (
     <div className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Task queue</h1>
         <p className="text-sm text-muted-foreground">
-          {isHr ? "Onboarding tasks across all new hires. You can act only on the ones your own team owns." : "Onboarding tasks that belong to your team, or to you as a manager."} Open tasks are shown unless you pick a status.
+          {isHr ? "Onboarding tasks across all new hires. You can assign a department's tasks; you work only the ones assigned to you." : "Onboarding tasks assigned to you. If you head a department, you also see its unassigned tasks and can assign them or do them yourself."} Open tasks are shown unless you pick a status.
         </p>
       </header>
 
@@ -49,6 +50,7 @@ export default function TaskQueuePage() {
             { value: "false", label: "Not overdue" },
           ]}
         />
+        <FilterSelect label="Any owner" value={assigned} onChange={setAssigned} options={[{ value: "false", label: "Needs an owner" }, { value: "true", label: "Has an owner" }]} />
       </div>
 
       {q.isError ? (
@@ -92,7 +94,7 @@ export default function TaskQueuePage() {
                 </p>
                 {t.blocked && t.dependsOn && <p className="text-xs text-muted-foreground">Waiting for &ldquo;{t.dependsOn.title}&rdquo;</p>}
               </div>
-              <TaskActions taskId={t.id} actions={t.allowedActions} />
+              <TaskActions task={t} />
             </li>
           ))}
           {q.data && q.data.data.length === 0 && (
