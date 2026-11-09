@@ -66,6 +66,8 @@ export interface RequestSummary {
   title: string;
   priority: RequestPriority;
   status: RequestStatus;
+  /** How it was raised: with the form, or through the chat assistant. */
+  channel: "FORM" | "CHAT";
   createdAt: string;
   updatedAt: string;
   category: { id: string; code: string; name: string };
@@ -96,6 +98,18 @@ export interface RequestDetail extends RequestSummary {
   events: RequestEvent[];
   comments: RequestComment[];
   allowedActions: RequestAction[];
+}
+
+/** What POST /requests/chat-draft returns: the form's fields, filled in by the assistant. Nothing is saved yet. */
+export interface ChatDraft {
+  title: string;
+  description: string;
+  categoryId: string;
+  priority: RequestPriority;
+  departmentId: string;
+  confidence: number;
+  lowConfidence: boolean;
+  reasoning: string;
 }
 
 export interface Assignable {

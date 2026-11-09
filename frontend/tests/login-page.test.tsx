@@ -54,6 +54,11 @@ describe("Sign-in page", () => {
     }
   });
 
+  it("has no request assistant: it belongs to the signed-in app only", () => {
+    render(<LoginPage />);
+    expect(screen.queryByRole("button", { name: "Ask the request assistant" })).toBeNull();
+  });
+
   it("offers a show/hide control that reveals the typed password", async () => {
     render(<LoginPage />);
     const pw = screen.getByLabelText("Password") as HTMLInputElement;

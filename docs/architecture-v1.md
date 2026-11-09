@@ -422,8 +422,8 @@ All paths below are relative to `/api/v1`.
 
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
-| GET | `/requests` | Any (scoped) | `?status&categoryId&priority&country&page` | paginated requests |
-| POST | `/requests` | Any | `{ categoryId, title, description, priority }` | `201` request, status `SUBMITTED` |
+| GET | `/requests` | Any (scoped) | `?status&categoryId&priority&country&channel&mine&page` | paginated requests; `mine=true` keeps only requests the caller raised themselves, `channel` filters by how they were raised |
+| POST | `/requests` | Any | `{ categoryId, title, description, priority, handlingDepartmentId?, channel? }` | `201` request, status `SUBMITTED`. The request goes to the category's department unless `handlingDepartmentId` names another (`422` if it does not exist); that department's Manager sees it. `channel` (`FORM` default, or `CHAT` when raised through the chat assistant) only labels the request |
 | GET | `/requests/:id` | Scoped | — | request + `events` + `comments` + `allowedActions` |
 | POST | `/requests/:id/transitions` | Per §6.1 | `{ action: "assign" \| "start" \| "resolve" \| "close", assigneeId?, note? }` | updated request; `409` if not allowed |
 | POST | `/requests/:id/comments` | Scoped | `{ body }` | `201` comment |

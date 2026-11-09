@@ -92,7 +92,8 @@ export function barChartOptions({ categories, series, stacked, animate, theme }:
       style: { fontSize, fontWeight: 400, colors: stacked ? series.map((s) => s.labelColor) : [theme.foreground] },
     },
     stroke: { show: false },
-    grid: { borderColor: theme.border, strokeDashArray: 0, xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } } },
+    // Top padding leaves room for the value printed above the tallest bar, which otherwise sits on the chart edge.
+    grid: { borderColor: theme.border, strokeDashArray: 0, padding: { top: stacked ? 0 : 24 }, xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } } },
     xaxis: {
       categories,
       axisBorder: { show: false },

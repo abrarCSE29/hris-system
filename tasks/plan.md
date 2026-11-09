@@ -152,6 +152,56 @@ Aggregates and cross-module insights, deployment, README, DEBUG_LOG.
 - Known trade-off: white on `#ed1c3e` is about 4.3:1 contrast, just under WCAG AA (4.5:1) for small
   text. Keep red-filled controls at 14px medium or larger.
 
+> Model changed after T30: Groq `qwen/qwen3.8-27b` replaces Gemini (see spec v8). Task text below is the original record.
+
+## AI chat draft (added after v1; spec: `docs/spec-ai-request-router.md`, intent: `docs/intent/ai-request-router.md`)
+
+An employee types one message; a Gemini model (`gemini-3.5-flash`, through LangChain structured output) returns the form
+fields; the employee edits them by hand and submits. The AI service is separate, stateless and database-free. The backend
+records every call in a new `chat_drafts` table (who, from where, outcome, redacted error detail, request id). **That record is
+for developers: it is read in the database, with no HR page and no API endpoint.** Tasks T23 to T28 in `tasks/todo.md`.
+
+### Dependency graph
+
+```
+T23 AI service skeleton ─ T24 Drafter (LangChain, Gemini) ─┐
+                                                             ├─ T26 Backend chat-draft + chat_drafts ─ T27 Chat head + draft card ─ T28 Docs, runbook, real-key check
+T25 POST /requests: handlingDepartmentId ───────────────────┘
+```
+
+T23 to T24 and T25 are independent and can be built in either order. T27 needs T25 and T26.
+
+### Slices
+
+- **Phase 5 (AI service alone):** T23, T24. Exit: `curl` a message to `/v1/draft` and get a valid draft (fake model in tests, real
+  Gemini by hand with the user's key); failures carry request id, cause and a redacted trace.
+- **Phase 6 (through the backend):** T25, T26. Exit: `POST /requests/chat-draft` returns a validated draft and writes a
+  `chat_drafts` row for every outcome, readable with SQL.
+- **Phase 7 (UI and ship):** T27, T28. Exit: in the browser, a message becomes an editable card that submits; the README explains
+  setup and debugging, with the SQL queries developers use to read the record.
+
+### Risks and mitigations
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| `gemini-3.5-flash` id or structured-output behaviour differs from the docs | High | Model id is a setting; the drafter validates every answer after the model (allowed codes, lengths) and retries once; a by-hand check with the real key at the end of T24 before any UI work |
+| Error output leaks the employee's message (LangChain and Pydantic print rejected input) | High | Redaction in the AI service's logger and error bodies; a test that fails a call on purpose with a recognisable message and asserts it never appears in output or in `error_detail` |
+| Python 3.14 with new dependencies | Med | Verified to install and import; version pinned with `.python-version` and `uv.lock`; Google SDK import warnings silenced in startup |
+| Gemini free-tier rate limits | Med | `429` maps to `AI_RATE_LIMITED`, shown to the user as "AI unavailable" with a link to the normal form |
+| AI call is slower than the platform's request limits | Med | 20 s timeout in the AI service and a matching client timeout in the backend; "Waking up the assistant…" after 3 s; set `maxDuration` on the route |
+| Prompt injection in the message | Med | Message passed as data; output restricted to fixed codes and validated; the employee reviews every field; the AI cannot write anything |
+| Client IP is the proxy's address behind the frontend rewrite | Low | Use `X-Forwarded-For` when present; document that locally it is `127.0.0.1` |
+| Migration drops hand-written indexes or constraints | Low | Review the generated SQL as before; test that the new table and its indexes exist |
+
+### Decisions confirmed by the user
+
+- Gemini Flash (`gemini-3.5-flash`), Python 3.14, sending messages to Google is fine, free-tier limits are fine.
+- Before submission; direct editing only; one message in, one draft out; floating chat head on every signed-in page.
+- The AI service writes no files and has no database. The backend records who asked and from where (not what was said).
+- The record is **for developers, not HR Admin**: no page, no endpoint, no nav item; developers query the database.
+- Every AI issue is stored in the database (error code, short reason, redacted detail, request id), not only logged.
+- Records are kept indefinitely in this build.
+
 ## Open questions
 
 - None at this time.

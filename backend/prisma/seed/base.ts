@@ -16,6 +16,7 @@ function mulberry32(seed: number) {
 }
 
 const TABLES = [
+  "chat_drafts",
   "request_comments", "request_events", "service_requests", "request_categories",
   "onboarding_tasks", "onboarding_instances", "template_tasks", "onboarding_templates",
   "users", "departments",

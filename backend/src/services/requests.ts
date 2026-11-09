@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Country, Prisma, RequestPriority, RequestStatus } from "@/generated/prisma/client";
+import { Country, Prisma, RequestChannel, RequestPriority, RequestStatus } from "@/generated/prisma/client";
 import type { AuthUser } from "@/lib/auth";
 import { ApiError } from "@/lib/errors";
 import { paginated, type Paging } from "@/lib/pagination";
@@ -15,6 +15,10 @@ export const createRequestBody = z
     title: z.string().trim().min(1).max(200),
     description: z.string().trim().min(1).max(5000),
     priority: z.enum(RequestPriority),
+    // Optional: send it to a different department than the category's (the chat assistant's draft lets the employee choose).
+    handlingDepartmentId: z.uuid().optional(),
+    // How it was raised. The chat assistant sends CHAT; it only labels the request for the person's own history.
+    channel: z.enum(RequestChannel).optional(),
   })
   .strict();
 
@@ -24,6 +28,9 @@ export const listRequestsQuery = z.object({
   priority: z.enum(RequestPriority).optional(),
   /** Country of the person who submitted the request. */
   country: z.enum(Country).optional(),
+  channel: z.enum(RequestChannel).optional(),
+  /** "true": only requests the signed-in person raised themselves (a Manager or HR Admin otherwise sees more). */
+  mine: z.enum(["true", "false"]).optional(),
 });
 
 export const transitionBody = z
@@ -58,6 +65,7 @@ function serializeSummary(r: RequestRow) {
     title: r.title,
     priority: r.priority,
     status: r.status,
+    channel: r.channel,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
     category: r.category,
@@ -87,6 +95,15 @@ export async function createRequest(actor: AuthUser, input: z.infer<typeof creat
   if (!category) {
     throw new ApiError("VALIDATION_FAILED", "Unknown category", [{ path: "categoryId", message: "Category not found" }]);
   }
+  // The requester may choose where it goes; otherwise it goes to the category's department.
+  let handlingDepartmentId = category.handlingDepartmentId;
+  if (input.handlingDepartmentId && input.handlingDepartmentId !== handlingDepartmentId) {
+    const department = await prisma.department.findUnique({ where: { id: input.handlingDepartmentId }, select: { id: true } });
+    if (!department) {
+      throw new ApiError("VALIDATION_FAILED", "Unknown department", [{ path: "handlingDepartmentId", message: "Department not found" }]);
+    }
+    handlingDepartmentId = department.id;
+  }
   // The request and its first history row are written together or not at all.
   const created = await prisma.$transaction(async (tx) => {
     const request = await tx.serviceRequest.create({
@@ -94,10 +111,11 @@ export async function createRequest(actor: AuthUser, input: z.infer<typeof creat
         requesterId: actor.id,
         categoryId: category.id,
         // Copied now, so later re-routing of a category doesn't move existing requests.
-        handlingDepartmentId: category.handlingDepartmentId,
+        handlingDepartmentId,
         title: input.title,
         description: input.description,
         priority: input.priority,
+        channel: input.channel ?? "FORM",
       },
       include: summaryInclude,
     });
@@ -114,6 +132,8 @@ export async function listRequests(actor: AuthUser, q: z.infer<typeof listReques
     status: q.status,
     categoryId: q.categoryId,
     priority: q.priority,
+    channel: q.channel,
+    ...(q.mine === "true" && { requesterId: actor.id }),
     ...(q.country && { requester: { country: q.country } }),
   };
   const where: Prisma.ServiceRequestWhereInput = { AND: [scopeRequests(actor), filters] };

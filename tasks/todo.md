@@ -337,3 +337,139 @@ linking to People filtered by that department. Nav item for HR Admin only.
 **Dependencies:** T21
 **Files:** `frontend/app/(app)/departments/page.tsx`, `frontend/lib/hooks/departments.ts`, `frontend/lib/nav.ts`, `frontend/app/(app)/people/page.tsx`
 **Scope:** M
+
+
+## Phase 5 — AI service (spec: docs/spec-ai-request-router.md)
+
+> Model changed after T30: Groq `qwen/qwen3.8-27b` replaces Gemini (spec v8). Task text below is the original record; the open real-key walkthroughs now need a `GROQ_API_KEY`.
+
+### Task 23: AI service skeleton, security and logging
+**Description:** Create `ai-service/` (Python 3.14, uv, FastAPI): config from env, `GET /health` (public, no Gemini call),
+the `X-Service-Token` check (constant time), a request id taken from `X-Request-Id`, JSON logging with the request id on every
+line, and the redaction helper for tracebacks. Docs disabled in production. `.env.example`, `.gitignore` (ignores `.env`).
+**Acceptance criteria:**
+- [x] `uv sync` and `uv run uvicorn app.main:app --port 8000` work on Python 3.14; startup silences the Google SDK warnings
+- [x] `/health` returns `{ status, model }` without calling Gemini
+- [x] A call without or with a wrong token gets `401`; the right token passes
+- [x] Every log line is one JSON object carrying the request id; the service writes no file and opens no database connection
+- [x] A traceback is logged and returned in redacted form: exception type, frames and cause, no input values
+**Verification:**
+- [x] `uv run pytest`: token, request id, log shape, redaction (a failing call with a recognisable message never prints it), no files written
+**Dependencies:** None
+**Files:** `ai-service/app/{main,config,security,logging}.py`, `ai-service/tests/*`, `pyproject.toml`, `.python-version`, `.env.example`, `.gitignore`
+**Scope:** M
+
+### Task 24: Drafter: LangChain + Gemini structured output
+**Description:** `POST /v1/draft`: build the prompt from the received categories and departments (priority guide, rules, message
+as data), call `gemini-3.5-flash` through `langchain-google-genai` `with_structured_output(Draft, method="json_schema")`,
+validate the answer against the codes received, retry once, and return the draft with `confidence`, `lowConfidence`, `model`,
+`latencyMs`, `attempts`. Failures return the error body (code, message, type, redacted detail, request id) with the right status
+(`502`, `504`, `429` mapped). Small labelled evaluation set and `eval/run.py`.
+**Acceptance criteria:**
+- [x] Valid output, an unknown code then a valid retry (`attempts: 2`), invalid twice (`502`), timeout (`504`), rate limit, all behave as the spec says
+- [x] `lowConfidence` is true below `CONFIDENCE_THRESHOLD`; a non-request message returns category Other with `lowConfidence`
+- [x] The prompt holds the message only as data; only the message, country and department name reach the model
+- [x] `DEBUG_LOG_PROMPTS` is off by default and warns when on
+**Verification:**
+- [x] `uv run pytest` with a fake chat model; no test calls Gemini
+- [x] **By hand with the user's key:** `uv run python -m eval.run` reached 15 of 15 on category; the laptop example is IT Equipment / Urgent / IT Operations (checked through HTTP as well)
+**Dependencies:** T23
+**Files:** `ai-service/app/{drafter,prompts,schemas}.py`, `ai-service/eval/*`, `ai-service/tests/*`
+**Scope:** M
+
+### Checkpoint: AI service alone
+- [x] Tests pass; a message over HTTP returns a draft; failures carry request id and redacted trace
+- [ ] Review with the user (needs their Gemini key in `ai-service/.env`)
+
+## Phase 6 — Backend (the chat record is for developers: no page, no endpoint)
+
+### Task 25: Create a request in a chosen department
+**Description:** `POST /requests` accepts an optional `handlingDepartmentId`; when present it must be an existing department and
+replaces the category's department as the handling department; absent behaves as today.
+**Acceptance criteria:**
+- [x] With and without the field; an unknown department gives `422`; the chosen department's Manager sees the request
+**Verification:**
+- [x] Vitest against the test DB; existing request tests still pass
+**Dependencies:** None
+**Files:** `backend/src/services/requests.ts`, `backend/tests/requests.test.ts`, `docs/architecture-v1.md`
+**Scope:** S
+
+### Task 26: chat-draft endpoint and the chat record
+**Description:** Prisma model and hand-reviewed migration for `chat_drafts` (columns per the spec, RLS with no policies, indexes);
+`ai-client` (token, 20 s timeout, error mapping to codes); `POST /requests/chat-draft` builds the call, validates the answer,
+maps codes to ids, and **writes one `chat_drafts` row for every outcome** (who from the session, page, IP, user agent, request id,
+outcome, `error_code`, `error`, redacted `error_detail`, `attempts`, model, latency, chosen values, message length, never the text).
+A failure to write the row never fails the draft.
+**Note:** the categories table has no `description` column, and the AI needs one. Keep the descriptions in a backend constant (same text as `ai-service/eval/categories.py`) rather than adding a column.
+**Acceptance criteria:**
+- [x] Success returns ids and values; `401`, `422` (empty, too long, extra field, a `userId` in the body); `503` for unreachable, timeout, auth, rate limit, bad shape, invalid output, rejected codes
+- [x] A row exists for each of those outcomes with the right `error_code`; `error_detail` never contains the message
+- [x] No request is created by `chat-draft`
+**Verification:**
+- [x] Vitest with the AI client mocked; migration reviewed; table and indexes asserted
+**Dependencies:** T24 (contract), T25
+**Files:** `backend/prisma/schema.prisma`, `backend/prisma/migrations/*`, `backend/src/lib/ai-client.ts`, `backend/src/services/intake.ts`, `backend/app/api/v1/requests/chat-draft/route.ts`, `backend/tests/chat-draft.test.ts`
+**Scope:** M
+
+### Checkpoint: backend end to end
+- [ ] `curl` as a signed-in user returns a draft and a row appears; with the AI service stopped, a failed row appears with its reason (checked with SQL)
+- [ ] All tests pass
+
+## Phase 7 — Frontend and ship
+
+### Task 27: Chat head and draft card
+**Description:** Floating chat head in the signed-in layout opening a sheet: message box (1,000 characters, counter, "Waking up…"
+after 3 s), the draft card with every field editable (title, description, category, priority, department; category change sets
+the department), "AI suggested" badges, low-confidence note, reasoning line, Submit (existing mutation, passes
+`handlingDepartmentId`), Start over, AI-down fallback with a link to `/requests/new`. Sends the current page path. Draft kept in memory when the sheet closes.
+**Acceptance criteria:**
+- [x] Every field editable; the submitted request has exactly the values shown; toasts for success and failure; not shown on the login page
+**Verification:**
+- [x] Component tests; `npx tsc --noEmit`
+- [ ] Manual in the browser with the real service (not done: no browser available here, and the Gemini quota is used up)
+**Dependencies:** T25, T26
+**Files:** `frontend/components/chat/*`, `frontend/lib/hooks/chat.ts`, `frontend/app/(app)/layout.tsx`, `frontend/tests/chat-*.test.tsx`
+**Scope:** M
+
+### Task 28: Docs, runbook and the real-key check
+**Description:** README: set up and run the AI service (uv, `.env`, token), environment variables for the backend, and a short
+"debugging the AI service" runbook (the SQL queries developers use to read `chat_drafts`, taking a request id from a failed row, searching the service's logs for it, the stored detail).
+Update `docs/architecture-v2.md` or add a note that v2's chat slice is built as in the spec. Final by-hand run with the user's key.
+**Acceptance criteria:**
+- [x] The README explains setup of all three apps, the variables, and the debugging runbook (SQL queries, error codes); no secret committed; `ai-service/.env.example` complete
+**Verification:**
+- [ ] (NOT DONE: needs Gemini quota and a restart of the dev servers) Walkthrough: laptop message to a submitted request; with the AI service stopped, a failed row appears in `chat_drafts` (read with the runbook's SQL)
+**Dependencies:** T27
+**Files:** `README.md`, `ai-service/.env.example`, `backend/.env.example`, `DEBUG_LOG.md`
+**Scope:** S
+
+### Task 29: Record the channel and list my chat requests (backend)
+**Description:** New column `service_requests.channel` (enum `FORM` default, `CHAT`) with a migration; `POST /requests` accepts an
+optional `channel`; `GET /requests` gains `mine=true` (only my own) and `channel` filters; the summary includes `channel`.
+**Acceptance criteria:**
+- [x] `channel` stored (`CHAT`, default `FORM`); an invalid value is `422`; existing rows read as `FORM`
+- [x] `mine=true` returns only the caller's own requests, also for a Manager and an HR Admin; `channel=CHAT` only chat ones; scope rules unchanged
+**Verification:**
+- [x] Vitest against the test DB; migration reviewed; `prisma migrate diff` shows no drift
+**Dependencies:** T25, T26
+**Files:** `backend/prisma/schema.prisma`, a new migration, `backend/src/services/requests.ts`, `backend/tests/requests.test.ts`, `docs/architecture-v1.md`
+**Scope:** S
+
+### Task 30: Earlier requests in the chat thread (frontend)
+**Description:** Rework the panel as a chat thread: greeting bubble, then the person's earlier chat requests as bubble pairs (their
+title on the right, the assistant's card on the left with reference link, department, live status, priority, time), then the
+current step; the message box stays at the bottom while composing. The list loads when the panel opens and is refreshed after Submit.
+The chat head sends `channel: "CHAT"` when submitting.
+**Acceptance criteria:**
+- [x] Pairs in order (oldest first, newest at the bottom), live status badge, link to the request; loading, error and empty states; the greeting stays first
+- [x] A just-submitted request appears (sent as a chat request, and the list refreshes after Submit) in the thread; form requests do not; the draft behaviour from T27 is unchanged
+**Verification:**
+- [x] Component tests; `npx tsc --noEmit`
+- [ ] Manual in the browser (not possible here)
+**Dependencies:** T29, T27
+**Files:** `frontend/components/chat/{bubble,past-requests,chat-head}.tsx`, `frontend/lib/hooks/chat.ts`, `frontend/lib/hooks/requests.ts`, `frontend/lib/types.ts`, `frontend/tests/chat-*.test.tsx`
+**Scope:** M
+
+### Checkpoint: AI chat draft complete
+- [ ] All acceptance criteria met; all test suites pass; no automated test calls Gemini
+- [ ] Ready for review

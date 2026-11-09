@@ -137,10 +137,27 @@ In each case the code was right and the expectation was wrong. Recorded because 
   first had the same wrong assumption baked in and passed. **Lesson:** build the fixture from what the library
   actually produces (probe it), not from what you expect it to produce.
 
+## 19. AI chat draft: problems the tests caught, and one found by hand: **real bugs and a mistake**
+- **Whitespace-only message accepted:** the AI service checked `min_length=1`, which counts spaces. Fixed with whitespace stripping on the request models.
+- **Request URLs in the logs:** the Google SDK uses the `httpx2` HTTP client, whose logger was not silenced, so a line with the full
+  Gemini URL was printed. The silencing missed the logger's name; the fix silences it *and* drops any "HTTP Request:" line from any logger.
+- **LangSmith tracing:** `langchain-core` depends on a tracing client that sends prompts to a third party when an environment variable
+  turns tracing on. The spec forbids that, so the service forces it off at startup, with a test.
+- **A log field called `message` crashed logging:** Python's `LogRecord` forbids extra keys that collide with its own attributes. Colliding
+  keys are now renamed.
+- **The API key was put in `ai-service/.env.example`** (a tracked file) instead of `.env`. It was never staged or committed (checked in the
+  history); it was moved to the ignored `.env` and the template restored. **Lesson:** the example file is for names only.
+- **The free Gemini tier rate-limits hard:** the evaluation first failed 7 of 15 calls with 429. The evaluation now paces itself and waits
+  before retrying; real use will see "assistant unavailable" often on a free key, which is by design and is recorded as `AI_RATE_LIMITED`.
+- **`prisma migrate dev` cannot replay our hand-written migration** (it alters `_prisma_migrations`, which the scratch database does not
+  have yet). The new table's SQL was generated with `prisma migrate diff` against the live database instead, then reviewed.
+
 ---
 
 ## Not resolved / not verified
 
+- **The AI chat assistant has not been seen in a browser or run end to end through the real backend** (the Gemini free quota was used up
+  during the build). The AI service was checked over HTTP against real Gemini, and the backend and frontend by tests with the AI mocked.
 - **Never viewed in a browser.** The Chrome extension was not connected for the whole build, so no page was seen or
   clicked. API behaviour was checked over HTTP through the real stack, and the front-end logic by unit tests, but
   layout, responsive breakpoints, chart rendering and keyboard use are unchecked.

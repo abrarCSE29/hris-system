@@ -93,6 +93,84 @@ describe("POST /requests", () => {
     expect((await json(await create(strangerId, payload({ categoryId: cat.HR_QUERY })))).handlingDepartment.code).toBe("PEOPLE");
   });
 
+  describe("channel (how it was raised)", () => {
+    it("defaults to FORM and stores CHAT when the chat assistant sends it", async () => {
+      const form = await json(await create(strangerId, payload()));
+      const chat = await json(await create(strangerId, payload({ channel: "CHAT" })));
+      expect(form.channel).toBe("FORM");
+      expect(chat.channel).toBe("CHAT");
+      expect((await db.serviceRequest.findUniqueOrThrow({ where: { id: chat.id } })).channel).toBe("CHAT");
+      expect((await db.serviceRequest.findUniqueOrThrow({ where: { id: form.id } })).channel).toBe("FORM");
+    });
+
+    it("rejects any other value, and stores nothing", async () => {
+      const before = await db.serviceRequest.count();
+      expect((await create(strangerId, payload({ channel: "EMAIL" }))).status).toBe(422);
+      expect((await create(strangerId, payload({ channel: "chat" }))).status).toBe(422);
+      expect((await create(strangerId, payload({ channel: null }))).status).toBe(422);
+      expect(await db.serviceRequest.count()).toBe(before);
+    });
+
+    it("changes neither the routing nor who can see the request", async () => {
+      const body = await json(await create(strangerId, payload({ channel: "CHAT" })));
+      expect(body.handlingDepartment.code).toBe("ITOPS");
+      expect((await detail(itHeadId, body.id)).status).toBe(200);
+      expect((await detail(opsHeadId, body.id)).status).toBe(404);
+    });
+
+    it("is part of every request in a list and in the detail", async () => {
+      const chat = await json(await create(strangerId, payload({ channel: "CHAT" })));
+      const rows = (await json(await list(strangerId, "?pageSize=100"))).data;
+      expect(rows.find((r: any) => r.id === chat.id).channel).toBe("CHAT");
+      expect((await json(await detail(strangerId, chat.id))).channel).toBe("CHAT");
+    });
+  });
+
+  describe("choosing the department", () => {
+    let opsDeptId: string;
+    beforeAll(async () => {
+      opsDeptId = (await db.department.findUniqueOrThrow({ where: { code: "OPS" } })).id;
+    });
+
+    it("sends the request to the chosen department instead of the category's, and keeps the category", async () => {
+      const res = await create(strangerId, payload({ handlingDepartmentId: opsDeptId }));
+      const body = await json(res);
+      expect(res.status).toBe(201);
+      expect(body).toMatchObject({ category: { code: "IT_EQUIPMENT" }, handlingDepartment: { code: "OPS" } });
+      expect((await db.serviceRequest.findUniqueOrThrow({ where: { id: body.id } })).handlingDepartmentId).toBe(opsDeptId);
+    });
+
+    it("uses the category's department when none is chosen", async () => {
+      const body = await json(await create(strangerId, payload()));
+      expect(body.handlingDepartment.code).toBe("ITOPS");
+    });
+
+    it("accepts the category's own department explicitly", async () => {
+      const itDeptId = (await db.department.findUniqueOrThrow({ where: { code: "ITOPS" } })).id;
+      expect((await json(await create(strangerId, payload({ handlingDepartmentId: itDeptId })))).handlingDepartment.code).toBe("ITOPS");
+    });
+
+    it("puts it in the chosen department's Manager's view, and not in the category's department's", async () => {
+      const body = await json(await create(strangerId, payload({ title: "Sent to Operations", handlingDepartmentId: opsDeptId })));
+      expect((await detail(opsHeadId, body.id)).status).toBe(200);
+      expect((await detail(itHeadId, body.id)).status).toBe(404);
+      const queue = await json(await list(opsHeadId, "?pageSize=100"));
+      expect(queue.data.map((r: any) => r.id)).toContain(body.id);
+    });
+
+    it("lets every role choose a department", async () => {
+      for (const userId of [ids.personas.newHire, ids.personas.manager, ids.personas.hrAdmin]) {
+        expect((await create(userId, payload({ handlingDepartmentId: opsDeptId }))).status).toBe(201);
+      }
+    });
+
+    it("explains an unknown department with the field name", async () => {
+      const body = await json(await create(strangerId, payload({ handlingDepartmentId: crypto.randomUUID() })));
+      expect(body.error.code).toBe("VALIDATION_FAILED");
+      expect(body.error.details).toEqual([{ path: "handlingDepartmentId", message: "Department not found" }]);
+    });
+  });
+
   it.each([
     ["unknown category", { categoryId: crypto.randomUUID() }],
     ["non-uuid category", { categoryId: "abc" }],
@@ -102,11 +180,68 @@ describe("POST /requests", () => {
     ["bad priority", { priority: "CRITICAL" }],
     ["client-supplied status", { status: "CLOSED" }],
     ["client-supplied requester", { requesterId: crypto.randomUUID() }],
-    ["client-supplied department", { handlingDepartmentId: crypto.randomUUID() }],
+    ["unknown department", { handlingDepartmentId: crypto.randomUUID() }],
+    ["non-uuid department", { handlingDepartmentId: "abc" }],
+    ["null department", { handlingDepartmentId: null }],
   ])("returns 422 for %s and stores nothing", async (_n, over) => {
     const before = await db.serviceRequest.count();
     expect((await create(strangerId, payload(over))).status).toBe(422);
     expect(await db.serviceRequest.count()).toBe(before);
+  });
+});
+
+describe("GET /requests?mine&channel (the chat's earlier requests)", () => {
+  let mgr: string;
+  let hr: string;
+  let emp: string;
+  const mk = async (who: string, title: string, channel: "FORM" | "CHAT") => json(await create(who, payload({ title, channel })));
+
+  beforeAll(async () => {
+    mgr = ids.personas.manager;
+    hr = ids.personas.hrAdmin;
+    emp = ids.personas.newHire;
+    await db.serviceRequest.deleteMany({ where: { title: { startsWith: "mine:" } } });
+    await mk(emp, "mine: emp chat 1", "CHAT");
+    await mk(emp, "mine: emp form", "FORM");
+    await mk(emp, "mine: emp chat 2", "CHAT");
+    await mk(mgr, "mine: mgr chat", "CHAT");
+    await mk(mgr, "mine: mgr form", "FORM");
+    await mk(hr, "mine: hr chat", "CHAT");
+    // A report's chat request: a Manager sees it in the normal list, but it is not theirs.
+    const report = await db.user.findFirstOrThrow({ where: { managerId: mgr, role: "EMPLOYEE" } });
+    await mk(report.id, "mine: report chat", "CHAT");
+  });
+
+  const titles = async (who: string, qs: string) =>
+    (await json(await list(who, `?pageSize=100&${qs}`))).data.map((r: any) => r.title).filter((t: string) => t.startsWith("mine:"));
+
+  it("returns only the caller's own chat requests, newest first", async () => {
+    expect(await titles(emp, "mine=true&channel=CHAT")).toEqual(["mine: emp chat 2", "mine: emp chat 1"]);
+  });
+
+  it("does not include form requests unless asked", async () => {
+    expect(await titles(emp, "mine=true&channel=FORM")).toEqual(["mine: emp form"]);
+    expect((await titles(emp, "mine=true")).sort()).toEqual(["mine: emp chat 1", "mine: emp chat 2", "mine: emp form"]);
+  });
+
+  it("is also 'mine' for a Manager and an HR Admin, who otherwise see more", async () => {
+    expect(await titles(mgr, "mine=true&channel=CHAT")).toEqual(["mine: mgr chat"]);
+    expect(await titles(hr, "mine=true&channel=CHAT")).toEqual(["mine: hr chat"]);
+    // without mine, the Manager still sees their report's request and HR sees everyone's: scope is unchanged
+    expect(await titles(mgr, "channel=CHAT")).toContain("mine: report chat");
+    expect(await titles(hr, "channel=CHAT")).toEqual(expect.arrayContaining(["mine: emp chat 1", "mine: mgr chat", "mine: hr chat", "mine: report chat"]));
+  });
+
+  it("mine=false is the same as leaving it out; other values and channels are 422", async () => {
+    expect((await titles(mgr, "mine=false&channel=CHAT")).length).toBeGreaterThan(1);
+    expect((await list(mgr, "?mine=yes")).status).toBe(422);
+    expect((await list(mgr, "?channel=EMAIL")).status).toBe(422);
+  });
+
+  it("pages and counts the filtered list", async () => {
+    const body = await json(await list(emp, "?mine=true&channel=CHAT&pageSize=1&page=2"));
+    expect(body.total).toBeGreaterThanOrEqual(2);
+    expect(body.data).toHaveLength(1);
   });
 });
 
