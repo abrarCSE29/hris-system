@@ -131,7 +131,7 @@ variable when seeding.
 | `it.support@hris.test` | Employee in IT Operations | Requests assigned to them (start/resolve); IT onboarding tasks in the Task queue |
 | `farid.tan@hris.test` | Manager (IT Operations) | IT's whole request queue, with Assign / Reassign (also while the work is in progress) |
 
-Every Manager is the head of their own department; there is no separate head role. Managers are listed on the People page (API: `GET /users?role=MANAGER`).
+Every Manager is the head of their own department; there is no separate head role. Managers are listed on the People page (API: `GET /users?roleId=<id of the Manager role>`, ids from `GET /meta`).
 
 ## Everyday commands
 
@@ -149,6 +149,7 @@ Every Manager is the head of their own department; there is no separate head rol
 ## Database and migrations
 
 - Schema: `backend/prisma/schema.prisma`. Migrations: `backend/prisma/migrations/`.
+- A user's role, country and status are rows in the lookup tables `roles`, `countries` and `user_statuses` (migration `*_user_lookup_tables`, hand-written; the seed fills them by code). The API returns them as objects with an id and filters by id; `GET /meta` lists the ids. They change by migration, not through the API.
 - `*_constraints_indexes_rls` is **hand-written SQL**: CHECK constraints, partial indexes and row-level security,
   none of which Prisma's schema language can express.
 - **Review every migration Prisma generates.** After changing the schema, check that nothing hand-written is dropped:

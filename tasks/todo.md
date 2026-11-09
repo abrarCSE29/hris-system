@@ -538,10 +538,10 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 35: Docs
 **Description:** Update `docs/architecture-v1.md` (data model and API) and the README.
 **Acceptance criteria:**
-- [ ] Docs describe the three tables, the object shape, the id filters
+- [x] Docs describe the three tables, the object shape, the id filters
 **Dependencies:** T33, T34
 **Scope:** S
 
 ### Checkpoint: Lookup tables complete
-- [ ] All acceptance criteria met; both test suites and the type-check pass; drift check empty
+- [x] All acceptance criteria met; both test suites and the type-check pass; drift check empty
 - [ ] Ready for review

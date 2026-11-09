@@ -195,15 +195,33 @@ erDiagram
         string full_name
         string email UK "stored lower-case"
         string password_hash "bcrypt"
-        enum role "EMPLOYEE, MANAGER, HR_ADMIN"
-        enum country "BANGLADESH, MALAYSIA, SRI_LANKA, CYPRUS"
+        uuid role_id FK "roles"
+        uuid country_id FK "countries"
         uuid department_id FK
         uuid manager_id FK "nullable"
         string job_title
         date joining_date
-        enum status "ACTIVE, ON_PROBATION, ON_NOTICE"
+        uuid status_id FK "user_statuses"
         datetime created_at
     }
+    ROLE {
+        uuid id PK
+        string code UK "EMPLOYEE, MANAGER, HR_ADMIN"
+        string name
+    }
+    COUNTRY {
+        uuid id PK
+        string shortcode UK "ISO two-letter: BD, MY, LK, CY"
+        string name "full name"
+    }
+    USER_STATUS {
+        uuid id PK
+        string code UK "ACTIVE, ON_PROBATION, ON_NOTICE"
+        string name
+    }
+    USER }o--|| ROLE : has
+    USER }o--|| COUNTRY : works_in
+    USER }o--|| USER_STATUS : is
     REQUEST_CATEGORY {
         uuid id PK
         enum code UK "IT_EQUIPMENT, SOFTWARE_ACCESS, HR_QUERY, FACILITIES, OTHER"
@@ -293,8 +311,8 @@ erDiagram
 |---|---|
 | `departments` | 7 departments: Engineering, People & Culture, Finance, Marketing, IT Operations, Legal & Compliance, Operations. `head_id` is the Manager who runs the department; it decides who triages requests routed there. |
 | `users` | Unique email, stored lower-case. `manager_id` points to another user (`CHECK (manager_id <> id)`). Never hard-deleted. A user is a **new hire** when they have an `ACTIVE` onboarding instance; this is not a separate column. |
-| Roles | A `role` enum on `users`. What each role may do is defined in code in `policy.ts` (§5). One role per user. |
-| Sessions | Signed JWT (8 hours) in an httpOnly, `Secure`, `SameSite=Lax` cookie containing only the user ID. No session table. |
+| Roles, countries, statuses | Three lookup tables (`roles`, `countries`, `user_statuses`) that `users` points to with required foreign keys (`ON DELETE RESTRICT`). Each row has a generated id; roles and statuses also have a `code` and `name`, countries a two-letter `shortcode` (checked by `CHECK ~ '^[A-Z]{2}$'`) and a full `name`. Rows are added by migration or seed only: the API cannot create, edit or delete them, and row-level security is on with no policies. Code never relies on a generated id: behaviour compares `role.code`, `status.code` and `country.shortcode`. What each role may do is defined in code in `policy.ts` (§5). One role per user. |
+| Sessions | Signed JWT (8 hours) in an httpOnly, `Secure`, `SameSite=Lax` cookie containing only the user ID. The role is read from the database on every request, so a role change applies at once. No session table. |
 
 **Module A — Service Requests**
 
@@ -335,8 +353,8 @@ runs. Partial indexes cover only unfinished work, so they stay small as closed i
 |---|---|---|
 | `users` | unique `(email)` | Login |
 | | `(manager_id)` | Manager's team in both modules |
-| | `(department_id, status)` | Assignee picker; department membership |
-| | `(country)` | Headcount by country |
+| | `(department_id, status_id)` | Assignee picker; department membership |
+| | `(country_id)` | Headcount by country |
 | `service_requests` | unique `(reference)` | Lookup by reference |
 | | `(requester_id, created_at DESC)` | "My requests" |
 | | `(assignee_id, status)` | "Assigned to me" |
@@ -406,23 +424,23 @@ All paths below are relative to `/api/v1`.
 | POST | `/auth/logout` | Any | — | `204`, clears cookie |
 | GET | `/auth/me` | Any | — | `{ user, isNewHire, headOfDepartmentId }` |
 
-`user = { id, employeeCode, fullName, email, role, country, department, managerId, jobTitle, status, joiningDate }`
+`user = { id, employeeCode, fullName, email, role, country, department, managerId, jobTitle, status, joiningDate }`, where `role` and `status` are `{ id, code, name }`, `country` is `{ id, shortcode, name }` and `department` is `{ id, code, name }`. The frontend shows `name` and compares `code` / `shortcode`.
 
 ### 4.3 Users and reference data
 
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
-| GET | `/users` | M (direct reports), H (all) | `?search&country&departmentId&status&page` | paginated users |
-| POST | `/users` | H | `{ fullName, email, country, departmentId, managerId, jobTitle, joiningDate, templateId? }` | `201` user; if `templateId` is given, the onboarding checklist is created in the same transaction |
+| GET | `/users` | M (direct reports), H (all) | `?search&countryId&departmentId&statusId&roleId&page` | paginated users |
+| POST | `/users` | H | `{ fullName, email, countryId, departmentId, managerId, jobTitle, joiningDate, roleId?, statusId?, templateId? }` | `201` user; if `templateId` is given, the onboarding checklist is created in the same transaction. `roleId` defaults to Employee; a Manager becomes the department's head if it has none, and a second Manager in a department is `422` (path `roleId`). `statusId` defaults to On probation and cannot be On notice |
 | GET | `/users/assignable` | M, H | `?departmentId` | active members of that department |
-| GET | `/meta` | Any | — | departments, request categories and enum values for form dropdowns |
+| GET | `/meta` | Any | — | departments, request categories, `roles`, `countries` and `userStatuses` (each with ids, for filters and forms) and the remaining enum values for form dropdowns |
 | GET | `/health` | Public | — | `{ status: "ok" }` |
 
 ### 4.4 Service requests (Module A)
 
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
-| GET | `/requests` | Any (scoped) | `?status&categoryId&priority&country&channel&mine&page` | paginated requests; `mine=true` keeps only requests the caller raised themselves, `channel` filters by how they were raised |
+| GET | `/requests` | Any (scoped) | `?status&categoryId&priority&countryId&channel&mine&page` | paginated requests; `mine=true` keeps only requests the caller raised themselves, `channel` filters by how they were raised |
 | POST | `/requests` | Any | `{ categoryId, title, description, priority, handlingDepartmentId?, channel? }` | `201` request, status `SUBMITTED`. The request goes to the category's department unless `handlingDepartmentId` names another (`422` if it does not exist); that department's Manager sees it. `channel` (`FORM` default, or `CHAT` when raised through the chat assistant) only labels the request |
 | GET | `/requests/:id` | Scoped | — | request + `events` + `comments` + `allowedActions` |
 | POST | `/requests/:id/transitions` | Per §6.1 | `{ action: "assign" \| "start" \| "resolve" \| "close", assigneeId?, note? }` | updated request; `409` if not allowed |
@@ -437,7 +455,7 @@ All paths below are relative to `/api/v1`.
 | GET | `/onboarding/templates/:id` | H | — | template with ordered tasks |
 | PUT | `/onboarding/templates/:id` | H | same body as create | updated template; replaces name, description and tasks. Checklists already assigned are copies and are **not** changed; `422` on dependency cycle, `409` on duplicate name |
 | POST | `/onboarding/instances` | H | `{ employeeId, templateId, startDate? }` | `201` checklist with dated tasks; `409` if one is already active |
-| GET | `/onboarding/instances` | M (direct reports), H (all) | `?country` | per hire: `{ total, completed, inProgress, notStarted, blocked, overdue, percentComplete }` |
+| GET | `/onboarding/instances` | M (direct reports), H (all) | `?countryId` | per hire: `{ total, completed, inProgress, notStarted, blocked, overdue, percentComplete }` |
 | GET | `/onboarding/instances/:id` | Hire (own), M (direct report), H | — | checklist with all tasks and calculated status |
 | GET | `/onboarding/me` | Any | — | own checklist, or `null` |
 | GET | `/onboarding/tasks` | Any (tasks the user owns) | `?status&overdue` | task queue across all new hires |
