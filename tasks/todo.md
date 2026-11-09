@@ -554,6 +554,7 @@ The chat head sends `channel: "CHAT"` when submitting.
 **Description:** `backend/src/lib/logger.ts`: `log(level, event, fields)` writes one JSON line to stdout; `redact(text)` strips secrets and personal values from error text.
 **Acceptance criteria:**
 - [x] One JSON object per line; reserved key names cannot overwrite `ts`, `level`, `event`; `LOG_LEVEL` respected; a circular field does not throw
+- [x] `warn` and `error` lines go to stderr; in development only, a short coloured line (red for errors) replaces the JSON (v4)
 - [x] `redact` removes a JWT, `Bearer` values, `key=` / `token=` query values, email addresses and bcrypt hashes, and cuts at a length limit (stack 8,000)
 **Verification:**
 - [x] `npm test` in `backend/`; tests written first (18 logger tests, mutation-checked)

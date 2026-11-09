@@ -1,17 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { log, redact } from "@/lib/logger";
 
-let lines: string[];
-beforeEach(() => {
-  lines = [];
-  vi.spyOn(process.stdout, "write").mockImplementation(((chunk: string | Uint8Array) => {
+let lines: string[]; // everything written, either stream
+let out: string[]; // stdout only
+let err: string[]; // stderr only
+const capture = (stream: NodeJS.WriteStream, into: string[]) =>
+  vi.spyOn(stream, "write").mockImplementation(((chunk: string | Uint8Array) => {
+    into.push(String(chunk));
     lines.push(String(chunk));
     return true;
   }) as never);
+beforeEach(() => {
+  lines = [];
+  out = [];
+  err = [];
+  capture(process.stdout, out);
+  capture(process.stderr, err);
   delete process.env.LOG_LEVEL;
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   delete process.env.LOG_LEVEL;
 });
 
@@ -68,11 +77,48 @@ describe("log", () => {
     expect(out.map((e) => e.event)).toEqual(["circular", "big"]);
   });
 
-  it("does not throw when writing to stdout fails", () => {
-    vi.mocked(process.stdout.write).mockImplementation(() => {
-      throw new Error("closed");
-    });
+  it("does not throw when writing fails", () => {
+    for (const stream of [process.stdout, process.stderr]) {
+      vi.mocked(stream.write).mockImplementation(() => {
+        throw new Error("closed");
+      });
+    }
     expect(() => log("error", "x")).not.toThrow();
+    expect(() => log("info", "y")).not.toThrow();
+  });
+
+  it("sends debug and info to stdout, and warn and error to stderr", () => {
+    process.env.LOG_LEVEL = "debug";
+    for (const level of ["debug", "info", "warn", "error"] as const) log(level, `e.${level}`);
+    expect(out.map((l) => JSON.parse(l).event)).toEqual(["e.debug", "e.info"]);
+    expect(err.map((l) => JSON.parse(l).event)).toEqual(["e.warn", "e.error"]);
+  });
+
+  describe("in development", () => {
+    beforeEach(() => vi.stubEnv("NODE_ENV", "development"));
+
+    it("prints a short coloured line instead of JSON, red for errors and yellow for warnings", () => {
+      log("error", "http.error", { method: "POST", route: "/api/v1/users", status: 500 });
+      log("warn", "auth.forbidden", { status: 403 });
+      log("info", "http.request", { status: 200 });
+      expect(err[0]).toContain("\x1b[31m");
+      expect(err[0]).toMatch(/ERROR http\.error method=POST route=\/api\/v1\/users status=500/);
+      expect(err[1]).toContain("\x1b[33m");
+      expect(out[0]).toContain("\x1b[32m");
+      expect(() => JSON.parse(err[0])).toThrow();
+    });
+
+    it("prints a stack on its own lines", () => {
+      log("error", "http.error", { stack: "Error: boom\n  at a (x.ts:1:1)" });
+      expect(err[0]).toContain("\nError: boom\n  at a (x.ts:1:1)");
+    });
+  });
+
+  it.each(["production", "test"])("always prints plain JSON with no colour when NODE_ENV is %s", (env) => {
+    vi.stubEnv("NODE_ENV", env);
+    log("error", "http.error", { status: 500 });
+    expect(err[0]).not.toContain("\x1b[");
+    expect(JSON.parse(err[0]).event).toBe("http.error");
   });
 });
 

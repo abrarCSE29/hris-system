@@ -1,5 +1,7 @@
 /**
- * JSON logs on stdout, one object per line (docs/spec-system-logs.md). Nothing is written to a file or the database.
+ * JSON logs, one object per line (docs/spec-system-logs.md): `debug` and `info` on stdout, `warn` and `error` on stderr, so a host
+ * can flag errors. Nothing is written to a file or the database. While developing (NODE_ENV=development) a short coloured line is
+ * printed instead of JSON; production and tests always get JSON.
  *
  * Error text from libraries (Prisma, fetch) can echo values, so anything taken from an exception goes through `redact` first.
  * Request and response bodies, headers, cookies, passwords and message text are never passed to `log` at all.
@@ -14,6 +16,17 @@ const RESERVED = new Set(["ts", "level", "event"]);
 function threshold(): number {
   const wanted = (process.env.LOG_LEVEL ?? "info").toLowerCase();
   return ORDER[wanted as LogLevel] ?? ORDER.info;
+}
+
+const COLOUR: Record<LogLevel, string> = { debug: "\x1b[2m", info: "\x1b[32m", warn: "\x1b[33m", error: "\x1b[31m" };
+const RESET = "\x1b[0m";
+
+/** The development line: `09:14:02.113 ERROR http.error method=POST route=/api/v1/users status=500`, coloured by level. */
+function pretty(entry: { ts: string; level: LogLevel; event: string } & Record<string, unknown>): string {
+  const { ts, level, event, stack, ...rest } = entry;
+  const parts = Object.entries(rest).map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`);
+  const head = `${ts.slice(11, 23)} ${level.toUpperCase().padEnd(5)} ${event}${parts.length ? " " + parts.join(" ") : ""}`;
+  return `${COLOUR[level]}${head}${RESET}${typeof stack === "string" ? `\n${stack}` : ""}`;
 }
 
 /** Writes one line. Never throws: a logging problem must not change a response. */
@@ -31,7 +44,14 @@ export function log(level: LogLevel, event: string, fields: Record<string, unkno
       // A circular value: keep the line and say what happened, rather than lose it.
       line = JSON.stringify({ ts: entry.ts, level, event, log_error: "fields could not be serialised" });
     }
-    process.stdout.write(`${line}\n`);
+    if (process.env.NODE_ENV === "development") {
+      try {
+        line = pretty(entry);
+      } catch {
+        // keep the JSON line
+      }
+    }
+    (ORDER[level] >= ORDER.warn ? process.stderr : process.stdout).write(`${line}\n`);
   } catch {
     // Nowhere left to report to.
   }

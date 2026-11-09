@@ -1,6 +1,6 @@
 # Spec: system logs for the backend
 
-Status: **v3.** v3: you decided to keep the IP address in security-event lines and to accept stdout-only retention for now. v2: no database table (your decision); logs go to stdout only. Source: the conversation on `feature/system-logs`.
+Status: **v4.** v4: errors and warnings go to stderr, and development prints a coloured short line (your request). v3: you decided to keep the IP address in security-event lines and to accept stdout-only retention for now. v2: no database table (your decision); logs go to stdout only. Source: the conversation on `feature/system-logs`.
 Related: `docs/architecture-v1.md`, `ai-service/app/logging.py` (the pattern to follow), `backend/src/lib/{with-auth,errors}.ts`.
 
 ## Objective
@@ -19,7 +19,7 @@ for which user, on which route, and the error with its stack, without reproducin
 
 ## Assumptions (correct me before approving)
 
-1. **One output: stdout, one JSON object per line**, the same idea as the AI service. Nothing is written to the database or to a file.
+1. **Output: one JSON object per line**, the same idea as the AI service. `debug` and `info` go to stdout; `warn` and `error` go to **stderr**, so a host can flag errors. Nothing is written to the database or to a file. **In development only** (`NODE_ENV=development`) a short coloured line is printed instead (`09:14:02.113 ERROR http.error method=POST route=… status=500`, red for errors, yellow for warnings); production and tests always get JSON.
 2. **One wrapper for every route.** A new `withRequest(handler)` in `backend/src/lib/` does, for every request: take or create the request id,
    time the call, run the handler, convert thrown errors to the error envelope, and log. `withAuth` is built on it. The public routes
    (`/auth/login`, `/auth/logout`, `/health`) use it too; today login catches errors itself and `/health` has no wrapper.
@@ -100,7 +100,7 @@ Handlers that need the user id for the log get it from the context `withAuth` al
 
 ## Testing strategy
 
-- **Logger:** one JSON object per line; reserved key names cannot overwrite `ts`/`level`/`event`; `LOG_LEVEL` is respected; a throwing `JSON.stringify` (circular field) does not throw.
+- **Logger:** one JSON object per line; stdout for debug/info and stderr for warn/error; the coloured format only when `NODE_ENV=development`, never in production or test; reserved key names cannot overwrite `ts`/`level`/`event`; `LOG_LEVEL` is respected; a throwing `JSON.stringify` (circular field) does not throw.
 - **Redaction:** a JWT, `Bearer …`, `?key=`, an email address and a bcrypt hash in an error message do not appear in the output.
 - **Request line:** a request logs method, route **pattern** (not the real id), status, duration and `userId`; 2xx is `info`, 4xx `warn`, 5xx `error`; `/health` logs nothing.
 - **Request id:** a valid incoming `x-request-id` is kept; an invalid one is replaced; every response, including errors, carries it, and error bodies carry `error.requestId`.
