@@ -631,7 +631,7 @@ The chat head sends `channel: "CHAT"` when submitting.
 - [x] A reassigned request counts for the person who holds it; requests of people outside the team never count
 **Verification:**
 - [x] Tests first with a fixed "today" and hand-computed numbers; mutation checks (each failed a test): period one day early, `SUBMITTED` counted as open, first instant excluded, end instant included, UTC midnight instead of Dhaka, resolved events not limited to the team, average not divided by the count
-**Done:** `requests.open / resolvedInPeriod / avgHoursToResolve` and each person's `openRequests` / `resolvedInPeriod`. The period is Dhaka midnight to the end of today (UTC+6, no daylight saving); the average is submitted-to-resolved in hours, rounded to one decimal, `null` when nothing was resolved. Backend 917 tests pass.
+**Done:** `requests.open / resolvedInPeriod / avgHoursToResolve` and each person's `openRequests` / `resolvedInPeriod`. The period is Dhaka midnight to the end of today (UTC+6, no daylight saving); the average is submitted-to-resolved in hours, rounded to one decimal, `null` when nothing was resolved. Backend 916 tests pass.
 **Dependencies:** T42
 **Files:** `backend/src/services/team-dashboard.ts`, `backend/tests/team-dashboard.test.ts`
 **Scope:** S
