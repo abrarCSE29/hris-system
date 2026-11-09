@@ -605,3 +605,91 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Checkpoint: System logs complete
 - [x] All spec success criteria met; backend (733) and frontend (147) suites and type-check pass; every route uses a wrapper; no console call left in backend src or app
 - [ ] Ready for review
+
+---
+
+## Manager dashboard (spec: `docs/spec-manager-dashboard.md`)
+
+### Task 42: Endpoint, scope, period and the per-person rows
+**Description:** `GET /dashboard/team?days=` for Managers: `getTeamDashboard(manager, days, today)` in `backend/src/services/team-dashboard.ts`. Team = direct reports. Returns `asOf`, `periodDays`, `periodStart`, `teamSize` and one `people` row per report (name, job title, every count `0` for now). Fixes the response shape.
+**Acceptance criteria:**
+- [ ] Manager `200`; HR Admin, Employee `403`; no cookie `401`
+- [ ] `days` is 7, 30 or 90 (default 30); anything else `422`; `periodStart` is `days - 1` days before today (Asia/Dhaka)
+- [ ] Only the manager's direct reports appear, any status, sorted by name; another manager's reports and the manager themself never do; no reports → `teamSize: 0`, empty list
+**Verification:**
+- [ ] `npm test` in `backend/`; tests first; mutation check: drop the `managerId` filter
+**Files:** `backend/src/services/team-dashboard.ts`, `backend/app/api/v1/dashboard/team/route.ts`, `backend/tests/team-dashboard.test.ts`
+**Scope:** S
+
+### Task 43: Request measures
+**Description:** Open now, resolved in the period and average time to resolve, for requests assigned to the team, in the totals and in each person's row.
+**Acceptance criteria:**
+- [ ] Open = `ASSIGNED` or `IN_PROGRESS` (not `SUBMITTED`, not unassigned)
+- [ ] Resolved in period = the `RESOLVED` event is inside the window (first and last day included, a day outside excluded); a later `CLOSED` changes nothing
+- [ ] `avgHoursToResolve` = mean of (resolved event − request creation), hand-computed in the test; `null` when none
+- [ ] A reassigned request counts for the person who holds it; requests of people outside the team never count
+**Verification:**
+- [ ] Tests first; mutation checks: flip the window start, count `SUBMITTED` as open
+**Dependencies:** T42
+**Files:** `backend/src/services/team-dashboard.ts`, `backend/tests/team-dashboard.test.ts`
+**Scope:** S
+
+### Task 44: Task measures
+**Description:** Open, overdue now, blocked now, completed on time and completed late, for onboarding tasks assigned to the team (department tasks the head assigned, and `MANAGER` tasks).
+**Acceptance criteria:**
+- [ ] On time = completed in the period on or before the due date (Dhaka date); late = after; a completion before the window is excluded
+- [ ] Overdue and blocked use the same rules as the existing queue and ignore `days`; unassigned and non-team tasks never count
+**Verification:**
+- [ ] Tests first; mutation check: change `<=` to `<` in the on-time comparison
+**Dependencies:** T43
+**Files:** `backend/src/services/team-dashboard.ts`, `backend/tests/team-dashboard.test.ts`
+**Scope:** S
+
+### Task 45: New hires and consistency
+**Description:** The manager's direct reports with an `ACTIVE` checklist (percent complete, overdue, blocked), and the guarantee that every total equals the sum of the people rows.
+**Acceptance criteria:**
+- [ ] Only direct reports with an `ACTIVE` checklist; numbers equal the checklist's own progress summary; ignores `days`
+- [ ] `requests.*` and `tasks.*` totals equal the sums of the people rows (one test over a busy fixture)
+- [ ] No request description, comment or message text appears anywhere in the response
+**Dependencies:** T44
+**Files:** `backend/src/services/team-dashboard.ts`, `backend/tests/team-dashboard.test.ts`
+**Scope:** S
+
+### Checkpoint: Backend
+- [ ] Whole backend suite and `tsc` pass; spec success criteria 1–3 shown by tests
+
+### Task 46: Frontend shell: nav, landing page, hook and period picker
+**Description:** `/team` page ("Team dashboard") with KPI cards from the totals, a 7/30/90 day picker (default 30), loading, empty ("You have no direct reports yet") and forbidden states. Nav item for Managers; `homeForRole("MANAGER")` becomes `/team`.
+**Acceptance criteria:**
+- [ ] A Manager signs in and lands on `/team`; HR Admin still on `/dashboard`, Employee on `/requests`; the nav item shows for Managers only
+- [ ] Changing the period sends the new `days` and shows the new numbers; the average shows as days and hours, or "—"
+- [ ] A `403` shows "The team dashboard is only available to Managers."; works at phone width; palette follows the existing rule (black, white, red)
+**Verification:**
+- [ ] `npx tsc --noEmit && npx vitest run` in `frontend/`; tests first
+**Dependencies:** T42 (shape)
+**Files:** `frontend/app/(app)/team/page.tsx`, `frontend/lib/{nav.ts,hooks/team.ts,types.ts}`, `frontend/tests/team-page.test.tsx`, `frontend/tests/app-layout.test.tsx`
+**Scope:** M
+
+### Task 47: Per-person table, workload chart and the team's new hires
+**Description:** The table (name, open requests, open tasks, overdue tasks, resolved, tasks on time / late), a workload bar chart (open items per person) using the existing bar card, and the new-hires list with links to each checklist.
+**Acceptance criteria:**
+- [ ] Rows in name order, zeros shown, no ranking, no score, no highlighting of "best" or "worst"
+- [ ] The chart and the table use the same numbers; each new hire links to `/onboarding/instances/:id`
+- [ ] No request or task text is shown, only counts and times
+**Verification:**
+- [ ] Frontend tests and `tsc` pass; tests first
+**Dependencies:** T45, T46
+**Files:** `frontend/components/team/*`, `frontend/app/(app)/team/page.tsx`, `frontend/tests/team-page.test.tsx`
+**Scope:** M
+
+### Task 48: Docs
+**Description:** `docs/architecture-v1.md` §4.6 (the endpoint and its numbers), §5 (matrix row), the README (what a Manager sees, landing page).
+**Acceptance criteria:**
+- [ ] Docs define every number the page shows, the period rule and who is in "team"
+**Dependencies:** T47
+**Scope:** S
+
+### Checkpoint: Manager dashboard complete
+- [ ] All spec success criteria met; backend and frontend suites and both type-checks pass
+- [ ] Manual in the browser (sign in as a Manager, change the period)
+- [ ] Ready for review
