@@ -96,8 +96,10 @@ export async function seedOnboarding(db: PrismaClient, base: Base) {
     const completedAt = new Map<string, number>();
     const lastIndex = tplTasks.length - 1;
 
-    const owners = async (t: (typeof tplTasks)[number]) => {
-      if (t.ownerType === "MANAGER") return hire.managerId!;
+    // A department task is handed by its head to one member: the demo IT login gets most of IT's, others a random member.
+    const itSupport = await db.user.findUniqueOrThrow({ where: { id: base.personas.itSupport }, select: { departmentId: true } });
+    const delegateTo = async (t: (typeof tplTasks)[number]) => {
+      if (t.ownerDepartmentId === itSupport.departmentId && rand() < 0.6) return base.personas.itSupport;
       const members = await db.user.findMany({ where: { departmentId: t.ownerDepartmentId!, status: { code: { not: "ON_NOTICE" } } }, select: { id: true }, orderBy: { employeeCode: "asc" } });
       return members[Math.floor(rand() * members.length)].id;
     };
@@ -119,13 +121,17 @@ export async function seedOnboarding(db: PrismaClient, base: Base) {
       // The last task is always left open, so a checklist is never accidentally finished.
       status.set(id, s);
 
+      // Work that has started or finished was assigned first; about half of the not-started department tasks are still waiting for the head.
+      const assigneeId =
+        t.ownerType === "MANAGER" ? hire.managerId : s !== "NOT_STARTED" || rand() < 0.5 ? await delegateTo(t) : null;
+
       let done: { completedAt: Date; completedById: string } | null = null;
       if (s === "COMPLETED") {
         const depTime = t.dependsOnId ? (completedAt.get(newIdByTplId.get(t.dependsOnId)!) ?? 0) : 0;
         const natural = new Date(`${addDays(startDate, Math.max(0, t.offsetDays - Math.floor(rand() * 3)))}T10:00:00Z`).getTime();
         const at = Math.min(Math.max(natural, depTime + 3_600_000), now - 3_600_000);
         completedAt.set(id, at);
-        done = { completedAt: new Date(at), completedById: await owners(t) };
+        done = { completedAt: new Date(at), completedById: t.ownerType === "MANAGER" ? hire.managerId! : assigneeId! };
       }
       rows.push({
         id,
@@ -134,7 +140,7 @@ export async function seedOnboarding(db: PrismaClient, base: Base) {
         description: t.description,
         ownerType: t.ownerType,
         ownerDepartmentId: t.ownerDepartmentId,
-        assigneeId: t.ownerType === "MANAGER" ? hire.managerId : null,
+        assigneeId,
         dueDate: new Date(`${dueDate}T00:00:00Z`),
         status: s,
         dependsOnId: t.dependsOnId ? newIdByTplId.get(t.dependsOnId)! : null,
