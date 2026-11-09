@@ -2,6 +2,8 @@ import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as login } from "../app/api/v1/auth/login/route";
+import { POST as logout } from "../app/api/v1/auth/logout/route";
+import { POST as chatDraft } from "../app/api/v1/requests/chat-draft/route";
 import { GET as health } from "../app/api/v1/health/route";
 import { GET as getMeta } from "../app/api/v1/meta/route";
 import { clearAll, seedBase } from "../prisma/seed/base";
@@ -215,5 +217,104 @@ describe("the public routes", () => {
     expect(res.headers.get("x-request-id")).toMatch(UUID);
     expect(((await res.json()) as any).error.requestId).toMatch(UUID);
     expect(byEvent("http.request")[0]).toMatchObject({ level: "warn", status: 401, method: "POST", route: "/api/v1/auth/login" });
+  });
+});
+
+describe("security events", () => {
+  let ids: Awaited<ReturnType<typeof seedBase>>;
+  beforeAll(async () => {
+    await clearAll(db);
+    ids = await seedBase(db, await bcrypt.hash("a-real-password", 4));
+  });
+  afterAll(() => db.$disconnect());
+
+  const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
+    req(path, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+  const asUser = async (id: string, extra: Record<string, string> = {}) => ({ cookie: `${SESSION_COOKIE}=${await signSession(id)}`, ...extra });
+
+  it("logs a failed login with the request id, route, ip and user agent, and never the email or password", async () => {
+    const email = "ana.perera@hris.test";
+    const res = await login(post("/api/v1/auth/login", { email, password: "wrong-password-123" }, { "x-forwarded-for": "203.0.113.7, 10.0.0.1", "user-agent": "TestBrowser/1.0" }));
+    expect(res.status).toBe(401);
+    const events = byEvent("auth.login_failed");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ level: "warn", requestId: res.headers.get("x-request-id"), route: "/api/v1/auth/login", ip: "203.0.113.7", userAgent: "TestBrowser/1.0" });
+    expect(events[0].userId).toBeUndefined();
+    const text = out.join("") + err.join("");
+    for (const secret of [email, "ana.perera", "wrong-password-123"]) expect(text).not.toContain(secret);
+  });
+
+  it("logs the same event for an unknown email and for a wrong password", async () => {
+    await login(post("/api/v1/auth/login", { email: "ghost@hris.test", password: "nope-nope-nope" }));
+    await login(post("/api/v1/auth/login", { email: "hr.admin@hris.test", password: "nope-nope-nope" }));
+    expect(byEvent("auth.login_failed")).toHaveLength(2);
+    expect(byEvent("auth.login")).toHaveLength(0);
+  });
+
+  it("does not log a failed login for a malformed request", async () => {
+    expect((await login(post("/api/v1/auth/login", { email: "a@b.c" }))).status).toBe(422);
+    expect(byEvent("auth.login_failed")).toHaveLength(0);
+  });
+
+  it("logs a successful login at info with the user's id and no email, password or session token", async () => {
+    const res = await login(post("/api/v1/auth/login", { email: "hr.admin@hris.test", password: "a-real-password" }));
+    expect(res.status).toBe(200);
+    const [event] = byEvent("auth.login");
+    expect(event).toMatchObject({ level: "info", userId: ids.personas.hrAdmin, requestId: res.headers.get("x-request-id") });
+    expect(out.join("")).not.toContain("hr.admin@hris.test");
+    const token = res.headers.get("set-cookie")!.match(/hris_session=([^;]+)/)![1];
+    expect(out.join("") + err.join("")).not.toContain(token);
+    expect(out.join("") + err.join("")).not.toContain("a-real-password");
+  });
+
+  it("logs a logout with the user's id", async () => {
+    const res = await logout(req("/api/v1/auth/logout", { method: "POST", headers: await asUser(ids.personas.hrAdmin) }));
+    expect(res.status).toBe(204);
+    expect(byEvent("auth.logout")[0]).toMatchObject({ level: "info", userId: ids.personas.hrAdmin });
+  });
+
+  it("logs auth.session_invalid for a 401 that sent a cookie, and nothing extra when no cookie was sent", async () => {
+    expect((await getMeta(req("/api/v1/meta", { headers: { cookie: `${SESSION_COOKIE}=not-a-real-token` } }))).status).toBe(401);
+    const [event] = byEvent("auth.session_invalid");
+    expect(event).toMatchObject({ level: "warn", route: "/api/v1/meta" });
+    expect(out.join("") + err.join("")).not.toContain("not-a-real-token");
+    out.length = 0;
+    err.length = 0;
+    expect((await getMeta(req("/api/v1/meta"))).status).toBe(401);
+    expect(byEvent("auth.session_invalid")).toHaveLength(0);
+  });
+
+  it("logs auth.forbidden for a 403, with the user's id", async () => {
+    const res = await withAuth(() => NextResponse.json({}), { roles: ["HR_ADMIN"] })(req("/api/v1/users", { headers: await asUser(ids.personas.newHire) }));
+    expect(res.status).toBe(403);
+    expect(byEvent("auth.forbidden")[0]).toMatchObject({ level: "warn", userId: ids.personas.newHire, route: "/api/v1/users" });
+  });
+
+  it("takes the first forwarded address, and truncates the ip to 64 and the user agent to 300 characters", async () => {
+    await login(post("/api/v1/auth/login", { email: "x@hris.test", password: "nope-nope-nope" }, { "x-forwarded-for": "9".repeat(200), "user-agent": "u".repeat(900) }));
+    const [event] = byEvent("auth.login_failed");
+    expect(event.ip).toHaveLength(64);
+    expect(event.userAgent).toHaveLength(300);
+  });
+
+  it("leaves ip and user agent out when the request has none", async () => {
+    await login(post("/api/v1/auth/login", { email: "x@hris.test", password: "nope-nope-nope" }));
+    const [event] = byEvent("auth.login_failed");
+    expect("ip" in event).toBe(false);
+  });
+
+  it("never writes a password, a cookie, an authorization header or a chat message anywhere in the output", async () => {
+    const cookie = (await asUser(ids.personas.newHire)).cookie;
+    const token = cookie.split("=")[1];
+    const message = "MY-PRIVATE-MESSAGE-" + "word ".repeat(150);
+    delete process.env.AI_SERVICE_URL;
+    const res = await chatDraft(post("/api/v1/requests/chat-draft", { message, page: "/requests" }, { cookie, authorization: "Bearer BEARER-SECRET-VALUE" }));
+    expect(res.status).toBe(503);
+    await login(post("/api/v1/auth/login", { email: "private.person@hris.test", password: "PASSWORD-SECRET-VALUE" }, { cookie, authorization: "Bearer BEARER-SECRET-VALUE" }));
+    const text = out.join("") + err.join("");
+    expect(text.length).toBeGreaterThan(0);
+    for (const secret of ["MY-PRIVATE-MESSAGE", "BEARER-SECRET-VALUE", "PASSWORD-SECRET-VALUE", "private.person", token]) {
+      expect(text, secret).not.toContain(secret);
+    }
   });
 });

@@ -1,10 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { toErrorResponse } from "./errors";
-import { log } from "./logger";
+import { log, type LogLevel } from "./logger";
+import { originOf } from "./origin";
 
 /**
  * Wraps every route (docs/spec-system-logs.md): gives the request an id, times it, turns a thrown error into the error envelope,
  * and writes the `http.request` line. Unexpected errors are logged as `http.error` by `toErrorResponse`.
+ *
+ * Security events (`auth.login`, `auth.login_failed`, `auth.logout`, `auth.session_invalid`, `auth.forbidden`) are written by
+ * `ctx.audit(event)`: request id, route, the user if known, and the caller's ip and user agent. Callers pass no other data, so an
+ * email, password or token cannot reach the line.
  *
  * What is logged: method, the route PATTERN (dynamic segments shown as `:id`, no query string), status, duration, request id and
  * the signed-in user's id. Never a body, header, cookie, password or message text.
@@ -16,7 +21,11 @@ export interface RequestContext<P> {
   params: Promise<P>;
   /** Filled in by the handler or by `withAuth` so the log line can name the user. */
   meta: { userId?: string };
+  /** Writes a security event line (warn unless a level is given). */
+  audit: (event: SecurityEvent, level?: LogLevel) => Promise<void>;
 }
+
+export type SecurityEvent = "auth.login" | "auth.login_failed" | "auth.logout" | "auth.session_invalid" | "auth.forbidden";
 
 interface RouteContext<P> {
   params: Promise<P>;
@@ -77,9 +86,14 @@ export function withRequest<P = Record<string, never>>(
       userId: meta.userId,
     });
 
+    const audit = async (event: SecurityEvent, level: LogLevel = "warn") => {
+      const { ip, userAgent } = originOf(req);
+      log(level, event, { requestId, ...(await where()), ip: ip ?? undefined, userAgent: userAgent ?? undefined });
+    };
+
     let res: Response;
     try {
-      res = await handler(req, { requestId, params, meta });
+      res = await handler(req, { requestId, params, meta, audit });
     } catch (err) {
       res = toErrorResponse(err, requestId, await where());
     }

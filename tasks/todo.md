@@ -575,9 +575,10 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 39: Security events
 **Description:** `auth.login_failed`, `auth.login`, `auth.logout`, `auth.session_invalid`, `auth.forbidden`, each with request id, route, user id when known, `ip` and `userAgent` (truncated 64 / 300).
 **Acceptance criteria:**
-- [ ] A failed login logs no email, no hash of it and no password
-- [ ] A 403 logs the user id; a 401 on a request that sent a cookie logs `auth.session_invalid`
-- [ ] A test with a password in the body, a cookie and a long chat message finds none of them in the output (mutation-checked)
+- [x] A failed login logs no email, no hash of it and no password
+- [x] A 403 logs the user id; a 401 on a request that sent a cookie logs `auth.session_invalid`
+- [x] A test with a password in the body, a cookie and a long chat message finds none of them in the output (mutation-checked)
+**Done:** `ctx.audit(event, level?)` on `withRequest` and `withAuth` (request id, route, user if known, `ip` and `userAgent` from the new `src/lib/origin.ts`, which `intake.ts` and the chat-draft route now share). `auth.session_invalid` only when a cookie was sent. 10 new tests; mutation-checked for cookie, authorization header, full URL and attempted email.
 **Dependencies:** T38
 **Files:** `backend/src/lib/with-request.ts`, `backend/app/api/v1/auth/*`, `backend/tests/logging.test.ts`
 **Scope:** M

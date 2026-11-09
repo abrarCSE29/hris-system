@@ -4,6 +4,7 @@ import type { AiErrorCode, ChatDraftOutcome, Prisma, RequestCategoryCode } from 
 import { AiCallError, requestDraft, type AiDraft } from "@/lib/ai-client";
 import type { AuthUser } from "@/lib/auth";
 import { ApiError } from "@/lib/errors";
+import type { Origin } from "@/lib/origin";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -28,16 +29,7 @@ export const CATEGORY_DESCRIPTIONS: Record<RequestCategoryCode, string> = {
   OTHER: "Anything that does not fit the other categories.",
 };
 
-export interface ChatDraftOrigin {
-  ip: string | null;
-  userAgent: string | null;
-}
-
-export function originOf(req: Request): ChatDraftOrigin {
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const ip = (forwarded || req.headers.get("x-real-ip") || "").trim().slice(0, 64);
-  return { ip: ip || null, userAgent: req.headers.get("user-agent")?.slice(0, 300) || null };
-}
+export type ChatDraftOrigin = Origin;
 
 const outcomeOf = (code: AiErrorCode): ChatDraftOutcome => {
   if (code === "AI_TIMEOUT") return "TIMEOUT";

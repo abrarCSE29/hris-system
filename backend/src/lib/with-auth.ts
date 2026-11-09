@@ -1,7 +1,7 @@
 import type { RoleCode } from "./lookups";
-import { getAuthUser, type AuthUser } from "./auth";
+import { SESSION_COOKIE, getAuthUser, readCookie, type AuthUser } from "./auth";
 import { ApiError } from "./errors";
-import { withRequest } from "./with-request";
+import { withRequest, type RequestContext } from "./with-request";
 
 export interface AuthContext<P> {
   user: AuthUser;
@@ -9,6 +9,8 @@ export interface AuthContext<P> {
   params: Promise<P>;
   /** The id of this request (also the `x-request-id` header), for passing on to other services. */
   requestId: string;
+  /** Writes a security event line, for example `auth.logout`. */
+  audit: RequestContext<unknown>["audit"];
 }
 
 /**
@@ -23,11 +25,16 @@ export function withAuth<P = Record<string, never>>(
 ) {
   return withRequest<P>(async (req, ctx) => {
     const user = await getAuthUser(req);
-    if (!user) throw new ApiError("UNAUTHORIZED", "Authentication required");
+    if (!user) {
+      // A cookie that does not give a user (expired, forged, or its user is gone) is worth a trace; no cookie at all is not.
+      if (readCookie(req, SESSION_COOKIE)) await ctx.audit("auth.session_invalid");
+      throw new ApiError("UNAUTHORIZED", "Authentication required");
+    }
     ctx.meta.userId = user.id;
     if (options.roles && !options.roles.includes(user.role.code as RoleCode)) {
+      await ctx.audit("auth.forbidden");
       throw new ApiError("FORBIDDEN", "You do not have access to this resource");
     }
-    return handler(req, { user, params: ctx.params, requestId: ctx.requestId });
+    return handler(req, { user, params: ctx.params, requestId: ctx.requestId, audit: ctx.audit });
   });
 }
