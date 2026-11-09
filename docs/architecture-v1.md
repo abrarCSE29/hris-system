@@ -470,6 +470,7 @@ All paths below are relative to `/api/v1`.
 | Method | Path | Auth | Response |
 |---|---|---|---|
 | GET | `/dashboard/summary` | H | `{ headcountByCountry, requestsByStatus, requestsByCategory, onboarding: { activeHires, overdueTasks, blockedTasks }, newHiresWaiting, completionRateByCountry }` |
+| GET | `/dashboard/team` | M | `?days=7\|30\|90` (default 30; anything else `422`) → `{ asOf, periodDays, periodStart, teamSize, requests: { open, resolvedInPeriod, avgHoursToResolve }, tasks: { open, overdue, blocked, completedOnTime, completedLate }, newHires: [{ employee: { id, fullName, country }, instanceId, percentComplete, overdue, blocked }], people: [{ id, fullName, jobTitle, openRequests, openTasks, overdueTasks, resolvedInPeriod, tasksCompletedOnTime, tasksCompletedLate }] }` |
 
 The last two fields are the cross-module insights. `newHiresWaiting` has one entry per department that handles
 requests (a department with at least one request category: IT Operations, Operations, People & Culture), IT Operations
@@ -477,6 +478,23 @@ first, then by name: `{ department: { id, code, name }, count, hires: [{ id, ful
 openRequests }] }`. A hire is listed under every department they have an open request with, and `openRequests` holds only
 that department's requests. The dashboard card "New hires waiting on <department>" has a selector for these departments
 and starts on IT Operations.
+
+#### Team dashboard *(added after v1 sign-off; spec `docs/spec-manager-dashboard.md`)*
+
+How the work of a Manager's team is going. Page: **Team dashboard** (`/team`, Managers only, first item in their sidebar,
+and where a Manager lands after signing in). HR Admin and Employees get `403` from the API and no nav item.
+
+- **Team** = the Manager's **direct reports** (`users.manager_id`), whatever their status. The Manager is not part of their own numbers. The dashboard does not use departments or department heads. A Manager with no reports gets `teamSize: 0` and empty lists.
+- **Attribution.** Work counts for the person it is assigned to *now* (a request's or task's `assignee_id`). A reassigned request counts for whoever holds it when resolved. A task completed by someone else on the assignee's behalf (for example the department head) is still credited to its assignee. Unassigned work belongs to nobody and is in no team number.
+- **Period.** `days` is the last 7, 30 or 90 calendar days **including today**, in Asia/Dhaka: from midnight Dhaka time (18:00 UTC the evening before) of `periodStart` up to the end of today. Only the figures marked *in period* below use it.
+- **Requests** (assigned to the team): `open` = status Assigned or In Progress, as of now. `resolvedInPeriod` = its `RESOLVED` event is inside the period (a later Close does not matter). `avgHoursToResolve` = the mean of (resolved time − creation time), in hours to one decimal, `null` when nothing was resolved; it includes the wait before assignment, because that is what the requester experienced.
+- **Onboarding tasks** (assigned to the team): `open` = not completed, as of now; `overdue` = open and due before today; `blocked` = open and waiting on an unfinished task (the same rules as the task queue); `completedOnTime` / `completedLate` = completed in the period, on time when the Dhaka date of completion is on or before the due date.
+- **New hires** = direct reports with an `ACTIVE` checklist: `percentComplete`, `overdue` and `blocked` are the checklist's own progress numbers; not limited by the period. The page links each to `/onboarding/instances/:id`.
+- **People** = one row per direct report in name order, zeros included. Every total equals the sum of the rows.
+- **What it is not.** "Performance" means work throughput from requests and tasks; there is no score, no ranking and no rating of a person, and the table is deliberately not sortable. Responses hold counts and times only, never request, comment or task text.
+- Computed live from the tables; nothing is stored and there is no migration.
+
+---
 
 ### 4.7 Department breakdown *(added after v1 sign-off)*
 
@@ -546,7 +564,7 @@ of this and has not been built.
 | Role | Summary |
 |---|---|
 | **Employee** | Submits requests; sees own requests and requests assigned to them; sees own onboarding checklist; works the onboarding tasks assigned to them. |
-| **Manager** | Everything an Employee can do, plus: sees requests from direct reports; as head of their own department (the Manager role is the department head; there is no separate head with extra permissions), sees and assigns requests routed to that department; monitors onboarding of direct reports and of any checklist that has a task owned by the department they head (opening it grants no actions); works `MANAGER` tasks for their new hires; as department head, sees every onboarding task the department owns and either does it or assigns it to a member. |
+| **Manager** | Everything an Employee can do, plus: lands on the Team dashboard, which shows how their direct reports' work is going (§4.6); sees requests from direct reports; as head of their own department (the Manager role is the department head; there is no separate head with extra permissions), sees and assigns requests routed to that department; monitors onboarding of direct reports and of any checklist that has a task owned by the department they head (opening it grants no actions); works `MANAGER` tasks for their new hires; as department head, sees every onboarding task the department owns and either does it or assigns it to a member. |
 | **HR Admin** | Sees everything in both modules; creates templates and new hires; assigns checklists; can assign any department's onboarding tasks; uses the dashboard. |
 
 Requests and department onboarding tasks reach a person the same way: the **head of the department** assigns them
@@ -568,6 +586,7 @@ requests and IT onboarding tasks the IT head gave them.
 | Assign onboarding task | ❌ | Tasks owned by the department they head | ✅ (any department task) |
 | Start / complete task | If assigned to them | If assigned, or the task is their department's, + own `MANAGER` tasks | Only tasks assigned to them; no override |
 | Onboarding progress | ❌ | Direct reports + checklists with a task owned by the department they head | All |
+| Team dashboard (`/team`) | ❌ | Own direct reports only | ❌ (uses the HR dashboard) |
 | Templates, new hires, assign checklist | ❌ | ❌ | ✅ |
 | Dashboard | ❌ | ❌ | ✅ |
 
@@ -685,11 +704,11 @@ day the seed runs, so overdue and in-progress scenarios stay realistic.
 | Data | Contents |
 |---|---|
 | Departments | 7, each with a head |
-| Employees | 100: Bangladesh 40, Malaysia 25, Sri Lanka 20, Cyprus 15. Names from country-appropriate lists, realistic job titles. 3 HR Admins, 7 Managers (exactly one per department, who heads it), the rest Employees. Mostly Active, ~10 On Probation (incl. all new hires), ~4 On Notice. |
-| Service requests | 35 across all 5 categories, 5 statuses and 4 priorities, with realistic titles and descriptions. History rows match each request's status. At least 6 requests with 2–4 comments. Several from new hires. |
+| Employees | 100: Bangladesh 40, Malaysia 25, Sri Lanka 20, Cyprus 15. Names from country-appropriate lists, and job titles that vary widely (more than 50 different ones). Only the three roles exist: 3 HR Admins, 7 Managers (exactly one per department, who heads it) and the rest Employees; everyone in a department reports to its Manager, so a Manager's team is the whole department. Mostly Active, ~10 On Probation (incl. all new hires), ~4 On Notice. |
+| Service requests | 80 across all 5 categories, 5 statuses and 4 priorities, created over the last 90 days, with realistic titles and descriptions. A request goes to its category's department unless it belongs elsewhere (a repository, a design tool, a finance tool or a contract goes to Engineering, Marketing, Finance or Legal), so **every department's Manager has requests to handle, some finished recently**. Resolution takes from hours to about a week (urgent work is quicker than low-priority work). History rows match each request's status. 12 requests have 2–4 comments. Several are from new hires. |
 | Templates | "Standard Onboarding" (10 tasks) and "Engineering Onboarding" (12 tasks), with dependency chains such as *Create accounts → Provision laptop → Grant repository access*. |
-| New hires | 7, joined 10–55 days ago across all four countries, with Completed, In Progress and Not Started tasks, at least 3 overdue and at least 2 blocked. |
-| Logins | At least one per role, listed in `README.md`: an HR Admin; a Manager whose direct reports include a new hire; a new-hire Employee; an IT Operations Employee with assigned requests and IT onboarding tasks. |
+| New hires | 7, joined 10–55 days ago across all four countries and five or six departments (two in Engineering, one in IT Operations), with Completed, In Progress and Not Started tasks, at least 3 overdue and at least 2 blocked. About a quarter of the completed tasks were finished late, so the on-time / late split on the team dashboard has both. A new hire never holds a task on their own checklist. |
+| Logins | At least one per role, listed in `README.md`: an HR Admin; the Engineering Manager (whose direct reports include a new hire); the IT Operations Manager (the busiest team dashboard); a new-hire Employee; an IT Operations Employee with assigned requests and IT onboarding tasks. |
 | Task assignment | Department tasks that were started or finished are assigned to a member of the owning department (the IT login holds most of IT's); about half of the not-started ones are still unassigned, so the department head has something to assign. |
 
 ---
@@ -762,7 +781,7 @@ Deliberately left out to fit the timeline. None of these appear in the code.
 ```
 hris-platform/
 ├── frontend/                  # Next.js 16 + shadcn/ui → Vercel
-│   ├── app/                   # (auth)/login, (app)/dashboard, requests, onboarding, people
+│   ├── app/                   # (auth)/login, (app)/dashboard, team, requests, onboarding, people
 │   ├── components/ui/         # shadcn components
 │   ├── components/            # requests/, onboarding/, dashboard/
 │   ├── lib/                   # api client, types, TanStack Query hooks

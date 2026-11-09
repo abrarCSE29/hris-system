@@ -651,24 +651,27 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 45: New hires and consistency
 **Description:** The manager's direct reports with an `ACTIVE` checklist (percent complete, overdue, blocked), and the guarantee that every total equals the sum of the people rows.
 **Acceptance criteria:**
-- [ ] Only direct reports with an `ACTIVE` checklist; numbers equal the checklist's own progress summary; ignores `days`
-- [ ] `requests.*` and `tasks.*` totals equal the sums of the people rows (one test over a busy fixture)
-- [ ] No request description, comment or message text appears anywhere in the response
+- [x] Only direct reports with an `ACTIVE` checklist; numbers equal the checklist's own progress summary; ignores `days`
+- [x] `requests.*` and `tasks.*` totals equal the sums of the people rows (one test over a busy fixture)
+- [x] No request description, comment or message text appears anywhere in the response
+**Done:** `newHires`: direct reports with an `ACTIVE` checklist (name, country, instance id, percent complete, overdue, blocked), in the people list's order, using the same `summarize` as the checklist page; not limited by the period. Consistency is checked for every seeded manager at 7, 30 and 90 days, and no request, comment or task text, e-mail address or outside person appears in any response. Mutation checks (each failed a test): finished checklists included, not limited to the team, overdue and blocked swapped (first survived because both were 1 in the fixture; fixed), e-mail leaked, a total off by one. Backend 932 tests pass.
 **Dependencies:** T44
 **Files:** `backend/src/services/team-dashboard.ts`, `backend/tests/team-dashboard.test.ts`
 **Scope:** S
 
 ### Checkpoint: Backend
-- [ ] Whole backend suite and `tsc` pass; spec success criteria 1–3 shown by tests
+- [x] Whole backend suite (932) and `tsc` pass; spec success criteria 1–3 shown by tests
 
 ### Task 46: Frontend shell: nav, landing page, hook and period picker
 **Description:** `/team` page ("Team dashboard") with KPI cards from the totals, a 7/30/90 day picker (default 30), loading, empty ("You have no direct reports yet") and forbidden states. Nav item for Managers; `homeForRole("MANAGER")` becomes `/team`.
 **Acceptance criteria:**
-- [ ] A Manager signs in and lands on `/team`; HR Admin still on `/dashboard`, Employee on `/requests`; the nav item shows for Managers only
-- [ ] Changing the period sends the new `days` and shows the new numbers; the average shows as days and hours, or "—"
-- [ ] A `403` shows "The team dashboard is only available to Managers."; works at phone width; palette follows the existing rule (black, white, red)
+- [x] A Manager signs in and lands on `/team`; HR Admin still on `/dashboard`, Employee on `/requests`; the nav item shows for Managers only
+- [x] Changing the period sends the new `days` and shows the new numbers; the average shows as days and hours, or "—"
+- [x] A `403` shows "The team dashboard is only available to Managers."; palette follows the existing rule (black, white, red; red only on Overdue)
+- [ ] Works at phone width (grids collapse to one column; not yet looked at in a browser)
 **Verification:**
-- [ ] `npx tsc --noEmit && npx vitest run` in `frontend/`; tests first
+- [x] `npx tsc --noEmit && npx vitest run` in `frontend/`; tests first; mutation checks (each failed a test): Manager lands on `/requests`, nav item shown to everyone, period not sent, 403 shows the generic error, duration floors instead of rounding, empty team still shows cards
+**Done:** `/team` page: heading, a Period picker (Last 7 / 30 / 90 days, default 30), a "Requests" row (Open requests, Resolved, Time to resolve) and an "Onboarding tasks" row (Open, Overdue, Blocked, Done on time, Done late), plus loading, empty ("You have no direct reports yet."), forbidden and retry states. `homeForRole("MANAGER")` is `/team`; the nav item "Team dashboard" is first for Managers. `KpiCard` accepts text. Frontend 172 tests pass.
 **Dependencies:** T42 (shape)
 **Files:** `frontend/app/(app)/team/page.tsx`, `frontend/lib/{nav.ts,hooks/team.ts,types.ts}`, `frontend/tests/team-page.test.tsx`, `frontend/tests/app-layout.test.tsx`
 **Scope:** M
@@ -676,11 +679,13 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 47: Per-person table, workload chart and the team's new hires
 **Description:** The table (name, open requests, open tasks, overdue tasks, resolved, tasks on time / late), a workload bar chart (open items per person) using the existing bar card, and the new-hires list with links to each checklist.
 **Acceptance criteria:**
-- [ ] Rows in name order, zeros shown, no ranking, no score, no highlighting of "best" or "worst"
-- [ ] The chart and the table use the same numbers; each new hire links to `/onboarding/instances/:id`
-- [ ] No request or task text is shown, only counts and times
+- [x] Rows in name order, zeros shown, no ranking, no score, no highlighting of "best" or "worst"
+- [x] The chart and the table use the same numbers; each new hire links to `/onboarding/instances/:id`
+- [x] No request or task text is shown, only counts and times
 **Verification:**
-- [ ] Frontend tests and `tsc` pass; tests first
+- [x] Frontend tests and `tsc` pass; tests first; mutation checks (each failed a test): table sorted by open requests, overdue always red, chart missing the requests series, chart not stacked, new-hire link to the wrong page, percent taken from the wrong field, a section shown for an empty team, period text fixed at 30
+- [ ] Looked at in a browser (layout with a real team of ~14 people, the chart labels, phone width)
+**Done:** `components/team/{people-table,workload-chart,new-hires}.tsx`, shown on `/team` below the cards: a "Workload per person" stacked bar chart (open requests + open tasks) next to "Your new hires" (name linking to the checklist, country, percent, a progress bar, "2 overdue · 1 blocked" or "On track"), then a "Person by person" table in name order with the seven counts (red only on overdue > 0, no sorting). Frontend 182 tests pass.
 **Dependencies:** T45, T46
 **Files:** `frontend/components/team/*`, `frontend/app/(app)/team/page.tsx`, `frontend/tests/team-page.test.tsx`
 **Scope:** M
@@ -688,11 +693,12 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 48: Docs
 **Description:** `docs/architecture-v1.md` §4.6 (the endpoint and its numbers), §5 (matrix row), the README (what a Manager sees, landing page).
 **Acceptance criteria:**
-- [ ] Docs define every number the page shows, the period rule and who is in "team"
+- [x] Docs define every number the page shows, the period rule and who is in "team"
+**Done:** `docs/architecture-v1.md`: the endpoint row in §4.6 and a "Team dashboard" subsection (team, attribution, period, every number, what it is not), the §5 matrix row and the Manager summary, the page in the repository layout; `README.md`: the Manager login. 
 **Dependencies:** T47
 **Scope:** S
 
 ### Checkpoint: Manager dashboard complete
-- [ ] All spec success criteria met; backend and frontend suites and both type-checks pass
+- [x] All spec success criteria met; backend (932) and frontend (182) suites and both type-checks pass
 - [ ] Manual in the browser (sign in as a Manager, change the period)
 - [ ] Ready for review

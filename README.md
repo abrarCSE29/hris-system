@@ -35,7 +35,7 @@ cd backend
 cp .env.example .env          # local defaults already point at the Docker database
 npm install
 npm run db:migrate            # apply migrations
-npm run db:seed               # 100 people, 35 requests, 2 templates, 7 new hires
+npm run db:seed               # 100 people, 80 requests (last 90 days), 2 templates, 7 new hires
 npm run dev
 
 # 3. Frontend  (http://localhost:3000), in a second terminal
@@ -126,10 +126,10 @@ variable when seeding.
 | Email | Role | Good for seeing |
 |---|---|---|
 | `hr.admin@hris.test` | HR Admin | Dashboard, all requests, People, Onboarding overview, Templates, add a new hire |
-| `manager@hris.test` | Manager (Engineering) | "My team", direct reports' requests and onboarding, their manager tasks in the Task queue. Also heads Engineering: sees and assigns Engineering's request queue and its onboarding tasks. |
+| `manager@hris.test` | Manager (Engineering) | The **Team dashboard** (where a Manager lands): open and resolved requests, time to resolve, tasks on time vs late, workload per person and their new hires, for the last 7, 30 or 90 days. Also "My team", direct reports' requests and onboarding, their manager tasks in the Task queue. Also heads Engineering: sees and assigns Engineering's request queue and its onboarding tasks. |
 | `new.hire@hris.test` | Employee, currently onboarding | "My onboarding" checklist with blocked and overdue tasks; their own requests |
 | `it.support@hris.test` | Employee in IT Operations | Requests assigned to them (start/resolve); the IT onboarding tasks the IT head assigned to them, in the Task queue |
-| `farid.tan@hris.test` | Manager (IT Operations) | IT's whole request queue and all of IT's onboarding tasks (the "Needs an owner" filter), with Assign / Reassign on both |
+| `it.manager@hris.test` | Manager (IT Operations) | The busiest **Team dashboard** (requests, tasks done on time and late, a new hire); IT's whole request queue and all of IT's onboarding tasks (the "Needs an owner" filter), with Assign / Reassign on both |
 
 Every Manager is the head of their own department; there is no separate head role. Managers are listed on the People page (API: `GET /users?roleId=<id of the Manager role>`, ids from `GET /meta`).
 
