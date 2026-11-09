@@ -10,7 +10,7 @@ import { POST as postUser } from "../app/api/v1/users/route";
 import { clearAll, seedBase } from "../prisma/seed/base";
 import { SESSION_COOKIE, signSession } from "@/lib/auth";
 import { addDays, todayInDhaka } from "@/services/onboarding-logic";
-import { db } from "./db";
+import { countryId, db } from "./db";
 
 let ids: Awaited<ReturnType<typeof seedBase>>;
 let tplId: string;
@@ -18,6 +18,7 @@ let itMember: string;
 let itMember2: string;
 let peopleMember: string;
 let otherManager: string;
+let cyprusId: string;
 let engOutsider: string; // Engineering employee, same department as the hire, not involved
 const today = () => todayInDhaka();
 
@@ -36,15 +37,16 @@ const send = async (handler: (r: Request, c?: any) => Promise<Response>, userId:
 beforeAll(async () => {
   await clearAll(db);
   ids = await seedBase(db, await bcrypt.hash("x", 4));
+  cyprusId = await countryId("CY");
   const it = await db.department.findUniqueOrThrow({ where: { code: "ITOPS" } });
   const people = await db.department.findUniqueOrThrow({ where: { code: "PEOPLE" } });
   const eng = await db.department.findUniqueOrThrow({ where: { code: "ENG" } });
-  const members = await db.user.findMany({ where: { departmentId: it.id, role: "EMPLOYEE", status: "ACTIVE" }, orderBy: { employeeCode: "asc" } });
+  const members = await db.user.findMany({ where: { departmentId: it.id, role: { code: "EMPLOYEE" }, status: { code: "ACTIVE" } }, orderBy: { employeeCode: "asc" } });
   [itMember, itMember2] = [members[0].id, members[1].id];
-  peopleMember = (await db.user.findFirstOrThrow({ where: { departmentId: people.id, role: "EMPLOYEE" } })).id;
+  peopleMember = (await db.user.findFirstOrThrow({ where: { departmentId: people.id, role: { code: "EMPLOYEE" } } })).id;
   // A Manager who has nothing to do with the hire, IT tasks or People tasks.
-  otherManager = (await db.user.findFirstOrThrow({ where: { role: "MANAGER", department: { code: { notIn: ["ENG", "ITOPS", "PEOPLE"] } } } })).id;
-  engOutsider = (await db.user.findFirstOrThrow({ where: { departmentId: eng.id, role: "EMPLOYEE", id: { not: ids.personas.newHire } } })).id;
+  otherManager = (await db.user.findFirstOrThrow({ where: { role: { code: "MANAGER" }, department: { code: { notIn: ["ENG", "ITOPS", "PEOPLE"] } } } })).id;
+  engOutsider = (await db.user.findFirstOrThrow({ where: { departmentId: eng.id, role: { code: "EMPLOYEE" }, id: { not: ids.personas.newHire } } })).id;
 
   const task = (key: string, over: object) => ({ key, title: key, description: "", ownerType: "DEPARTMENT", offsetDays: 0, deadlineLabel: "Day 1", ...over });
   const res = await send(postTemplate, ids.personas.hrAdmin, {
@@ -196,7 +198,7 @@ describe("reading checklists (scope)", () => {
 
   it("lists progress per hire: HR sees all, a Manager only direct reports, others are refused", async () => {
     await assign();
-    const other = await db.user.findFirstOrThrow({ where: { managerId: otherManager, role: "EMPLOYEE" } });
+    const other = await db.user.findFirstOrThrow({ where: { managerId: otherManager, role: { code: "EMPLOYEE" } } });
     await assign(addDays(today(), -3), other.id);
 
     const hr = await json(await send(listInstancesRoute, ids.personas.hrAdmin));
@@ -211,11 +213,14 @@ describe("reading checklists (scope)", () => {
 
   it("filters the list by country and status", async () => {
     const { body } = await assign();
-    const country = body.employee.country;
+    const country = body.employee.country.id;
     const url = (qs: string) => `http://x/api/v1/onboarding/instances${qs}`;
-    expect((await json(await send(listInstancesRoute, ids.personas.hrAdmin, { url: url(`?country=${country}`) }))).total).toBe(1);
-    const otherCountry = ["BANGLADESH", "MALAYSIA", "SRI_LANKA", "CYPRUS"].find((c) => c !== country)!;
-    expect((await json(await send(listInstancesRoute, ids.personas.hrAdmin, { url: url(`?country=${otherCountry}`) }))).total).toBe(0);
+    expect((await json(await send(listInstancesRoute, ids.personas.hrAdmin, { url: url(`?countryId=${country}`) }))).total).toBe(1);
+    const otherCountry = (await db.country.findFirstOrThrow({ where: { id: { not: country } } })).id;
+    expect((await json(await send(listInstancesRoute, ids.personas.hrAdmin, { url: url(`?countryId=${otherCountry}`) }))).total).toBe(0);
+    const unknown = await send(listInstancesRoute, ids.personas.hrAdmin, { url: url(`?countryId=${crypto.randomUUID()}`) });
+    expect(unknown.status).toBe(422);
+    expect((await json(unknown)).error.details[0].path).toBe("countryId");
     expect((await json(await send(listInstancesRoute, ids.personas.hrAdmin, { url: url("?status=COMPLETED") }))).total).toBe(0);
     expect((await send(listInstancesRoute, ids.personas.hrAdmin, { url: url("?status=NOPE") })).status).toBe(422);
   });
@@ -223,7 +228,7 @@ describe("reading checklists (scope)", () => {
 
 describe("POST /users with templateId", () => {
   const newUser = (over: object = {}) => ({
-    fullName: "Fresh Starter", email: "fresh@hris.test", country: "CYPRUS", departmentId: "", managerId: "", jobTitle: "Engineer", joiningDate: "2026-11-02", ...over,
+    fullName: "Fresh Starter", email: "fresh@hris.test", countryId: cyprusId, departmentId: "", managerId: "", jobTitle: "Engineer", joiningDate: "2026-11-02", ...over,
   });
   const create = async (over: object = {}) =>
     send(postUser, ids.personas.hrAdmin, { body: newUser({ departmentId: ids.departmentIds.ENG, managerId: ids.personas.manager, ...over }) });

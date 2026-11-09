@@ -57,20 +57,20 @@ describe("onboarding seed: templates", () => {
 
 describe("onboarding seed: new hires", () => {
   it("onboards exactly the 7 designated new hires, each with one ACTIVE checklist from their joining date", async () => {
-    const insts = await db.onboardingInstance.findMany({ include: { employee: { include: { department: true } }, template: true } });
+    const insts = await db.onboardingInstance.findMany({ include: { employee: { include: { department: true, status: true } }, template: true } });
     expect(insts).toHaveLength(7);
     expect(insts.map((i) => i.employeeId).sort()).toEqual([...base.newHireIds].sort());
     for (const i of insts) {
       expect(i.status).toBe("ACTIVE");
       expect(toIsoDate(i.startDate)).toBe(toIsoDate(i.employee.joiningDate));
       expect(i.template.name).toBe(i.employee.department.code === "ENG" ? "Engineering Onboarding" : "Standard Onboarding");
-      expect(i.employee.status).toBe("ON_PROBATION");
+      expect(i.employee.status.code).toBe("ON_PROBATION");
     }
   });
 
   it("spans all four countries, several departments and several managers", async () => {
-    const hires = await db.user.findMany({ where: { id: { in: base.newHireIds } }, include: { department: true } });
-    expect(new Set(hires.map((h) => h.country))).toEqual(new Set(["BANGLADESH", "MALAYSIA", "SRI_LANKA", "CYPRUS"]));
+    const hires = await db.user.findMany({ where: { id: { in: base.newHireIds } }, include: { department: true, country: true } });
+    expect(new Set(hires.map((h) => h.country.shortcode))).toEqual(new Set(["BD", "MY", "LK", "CY"]));
     expect(new Set(hires.map((h) => h.department.code)).size).toBeGreaterThanOrEqual(4);
     expect(new Set(hires.map((h) => h.managerId)).size).toBeGreaterThanOrEqual(4);
     expect(hires.every((h) => {

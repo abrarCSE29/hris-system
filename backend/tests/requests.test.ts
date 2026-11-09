@@ -21,7 +21,7 @@ beforeAll(async () => {
   const depts = await db.department.findMany();
   itHeadId = depts.find((d) => d.code === "ITOPS")!.headId!;
   opsHeadId = depts.find((d) => d.code === "OPS")!.headId!;
-  strangerId = (await db.user.findFirstOrThrow({ where: { department: { code: "FIN" }, role: "EMPLOYEE" } })).id;
+  strangerId = (await db.user.findFirstOrThrow({ where: { department: { code: "FIN" }, role: { code: "EMPLOYEE" } } })).id;
 });
 afterAll(() => db.$disconnect());
 
@@ -208,7 +208,7 @@ describe("GET /requests?mine&channel (the chat's earlier requests)", () => {
     await mk(mgr, "mine: mgr form", "FORM");
     await mk(hr, "mine: hr chat", "CHAT");
     // A report's chat request: a Manager sees it in the normal list, but it is not theirs.
-    const report = await db.user.findFirstOrThrow({ where: { managerId: mgr, role: "EMPLOYEE" } });
+    const report = await db.user.findFirstOrThrow({ where: { managerId: mgr, role: { code: "EMPLOYEE" } } });
     await mk(report.id, "mine: report chat", "CHAT");
   });
 
@@ -255,7 +255,7 @@ describe("GET /requests (scope, filters, paging)", () => {
     const depts = await db.department.findMany();
     itHeadId = depts.find((d) => d.code === "ITOPS")!.headId!;
     opsHeadId = depts.find((d) => d.code === "OPS")!.headId!;
-    strangerId = (await db.user.findFirstOrThrow({ where: { department: { code: "FIN" }, role: "EMPLOYEE" } })).id;
+    strangerId = (await db.user.findFirstOrThrow({ where: { department: { code: "FIN" }, role: { code: "EMPLOYEE" } } })).id;
     // newHire (reports to manager) → IT; stranger → IT; stranger → Facilities (Ops)
     r = {
       hire: (await json(await create(ids.personas.newHire, payload({ title: "Hire IT", priority: "URGENT" })))).id,
@@ -302,11 +302,18 @@ describe("GET /requests (scope, filters, paging)", () => {
     expect(await idsOf(hr, "?status=ASSIGNED")).toEqual([r.hire]);
     expect(await idsOf(hr, `?categoryId=${cat.FACILITIES}`)).toEqual([r.facilities]);
     expect(await idsOf(hr, "?priority=URGENT")).toEqual([r.hire]);
-    const hireCountry = (await db.user.findUniqueOrThrow({ where: { id: ids.personas.newHire } })).country;
-    expect(await idsOf(hr, `?country=${hireCountry}`)).toContain(r.hire);
+    const hireCountry = (await db.user.findUniqueOrThrow({ where: { id: ids.personas.newHire } })).countryId;
+    expect(await idsOf(hr, `?countryId=${hireCountry}`)).toContain(r.hire);
     // A filter never widens scope: the stranger cannot pull in the hire's request.
     expect(await idsOf(strangerId, `?priority=URGENT`)).toEqual([]);
-    expect(await idsOf(strangerId, `?country=${hireCountry}&status=ASSIGNED`)).toEqual([]);
+    expect(await idsOf(strangerId, `?countryId=${hireCountry}&status=ASSIGNED`)).toEqual([]);
+  });
+
+  it("answers 422 naming countryId for a country id that does not exist or is not an id", async () => {
+    for (const bad of [crypto.randomUUID(), "MALAYSIA"]) {
+      const res = await list(ids.personas.hrAdmin, `?countryId=${bad}`);
+      expect(res.status).toBe(422);
+    }
   });
 
   it("paginates", async () => {

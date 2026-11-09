@@ -8,8 +8,8 @@ import type { AuthUser } from "@/lib/auth";
 
 /** HR Admin: everyone. Manager: direct reports. Anyone else: only themselves (defence in depth). */
 export function scopeUsers(user: AuthUser): Prisma.UserWhereInput {
-  if (user.role === "HR_ADMIN") return {};
-  if (user.role === "MANAGER") return { managerId: user.id };
+  if (user.role.code === "HR_ADMIN") return {};
+  if (user.role.code === "MANAGER") return { managerId: user.id };
   return { id: user.id };
 }
 
@@ -20,9 +20,9 @@ export function scopeUsers(user: AuthUser): Prisma.UserWhereInput {
  * - HR Admin: everything
  */
 export function scopeRequests(user: AuthUser): Prisma.ServiceRequestWhereInput {
-  if (user.role === "HR_ADMIN") return {};
+  if (user.role.code === "HR_ADMIN") return {};
   const scope: Prisma.ServiceRequestWhereInput[] = [{ requesterId: user.id }, { assigneeId: user.id }];
-  if (user.role === "MANAGER") {
+  if (user.role.code === "MANAGER") {
     scope.push({ requester: { managerId: user.id } });
     if (user.headOfDepartmentId) scope.push({ handlingDepartmentId: user.headOfDepartmentId });
   }
@@ -34,9 +34,9 @@ export function scopeRequests(user: AuthUser): Prisma.ServiceRequestWhereInput {
  * HR Admin: all. Manager: their direct reports'. Anyone: their own.
  */
 export function scopeInstances(user: AuthUser): Prisma.OnboardingInstanceWhereInput {
-  if (user.role === "HR_ADMIN") return {};
+  if (user.role.code === "HR_ADMIN") return {};
   const scope: Prisma.OnboardingInstanceWhereInput[] = [{ employeeId: user.id }];
-  if (user.role === "MANAGER") scope.push({ employee: { managerId: user.id } });
+  if (user.role.code === "MANAGER") scope.push({ employee: { managerId: user.id } });
   return { OR: scope };
 }
 
@@ -45,7 +45,7 @@ export function scopeInstances(user: AuthUser): Prisma.OnboardingInstanceWhereIn
  * MANAGER-type tasks assigned to them. HR Admin owns the whole queue.
  */
 export function scopeOwnedTasks(user: AuthUser): Prisma.OnboardingTaskWhereInput {
-  if (user.role === "HR_ADMIN") return {};
+  if (user.role.code === "HR_ADMIN") return {};
   return {
     OR: [
       { ownerType: "DEPARTMENT", ownerDepartmentId: user.department.id },
@@ -56,6 +56,6 @@ export function scopeOwnedTasks(user: AuthUser): Prisma.OnboardingTaskWhereInput
 
 /** Tasks a user may open: the ones they own, plus every task on a checklist they can see. */
 export function scopeVisibleTasks(user: AuthUser): Prisma.OnboardingTaskWhereInput {
-  if (user.role === "HR_ADMIN") return {};
+  if (user.role.code === "HR_ADMIN") return {};
   return { OR: [scopeOwnedTasks(user), { instance: scopeInstances(user) }] };
 }

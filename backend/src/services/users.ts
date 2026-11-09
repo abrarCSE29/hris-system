@@ -1,26 +1,30 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { Country, Prisma, Role, UserStatus } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { hashPassword, type AuthUser } from "@/lib/auth";
 import { ApiError } from "@/lib/errors";
+import { requireLookupId } from "@/lib/lookup-ids";
+import { NEW_USER_STATUS_CODES } from "@/lib/lookups";
 import { paginated, type Paging } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { isoDate } from "@/lib/validation";
 import { serializeUser, userInclude } from "@/lib/user-serializer";
 import { createChecklist } from "./onboarding";
 import { scopeUsers } from "./policy";
+import { ASSIGNABLE_STATUSES } from "./state-machine";
 
 // ── list ─────────────────────────────────────────────────────────────────────
 
 export const listUsersQuery = z.object({
   search: z.string().trim().min(1).optional(),
-  country: z.enum(Country).optional(),
+  /** Role, country and status are filtered by id (the ids come from GET /meta). */
+  countryId: z.uuid().optional(),
   departmentId: z.uuid().optional(),
-  status: z.enum(UserStatus).optional(),
-  role: z.enum(Role).optional(),
+  statusId: z.uuid().optional(),
+  roleId: z.uuid().optional(),
 });
 
-/** Query-string values that are empty ("?country=") count as absent. */
+/** Query-string values that are empty ("?countryId=") count as absent. */
 export function queryObject(params: URLSearchParams): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of params) if (v !== "") out[k] = v;
@@ -28,11 +32,12 @@ export function queryObject(params: URLSearchParams): Record<string, string> {
 }
 
 export async function listUsers(actor: AuthUser, q: z.infer<typeof listUsersQuery>, paging: Paging) {
+  await Promise.all([requireLookupId("country", q.countryId, "countryId"), requireLookupId("status", q.statusId, "statusId"), requireLookupId("role", q.roleId, "roleId")]);
   const filters: Prisma.UserWhereInput = {
-    country: q.country,
+    countryId: q.countryId,
     departmentId: q.departmentId,
-    status: q.status,
-    role: q.role,
+    statusId: q.statusId,
+    roleId: q.roleId,
     ...(q.search && {
       OR: [
         { fullName: { contains: q.search, mode: "insensitive" } },
@@ -59,11 +64,11 @@ export async function listUsers(actor: AuthUser, q: z.infer<typeof listUsersQuer
 
 /** Members who can be given work: everyone except people on notice. */
 export async function listAssignable(actor: AuthUser, departmentId: string) {
-  if (actor.role !== "HR_ADMIN" && actor.headOfDepartmentId !== departmentId) {
+  if (actor.role.code !== "HR_ADMIN" && actor.headOfDepartmentId !== departmentId) {
     throw new ApiError("FORBIDDEN", "You can only list members of a department you head");
   }
   const rows = await prisma.user.findMany({
-    where: { departmentId, status: { in: ["ACTIVE", "ON_PROBATION"] } },
+    where: { departmentId, status: { code: { in: ASSIGNABLE_STATUSES } } },
     select: { id: true, employeeCode: true, fullName: true, jobTitle: true },
     orderBy: [{ fullName: "asc" }, { id: "asc" }],
   });
@@ -77,15 +82,15 @@ export const createUserBody = z
     fullName: z.string().trim().min(1).max(120),
     // Normalise first, then validate, so " Ana@Example.com " is accepted and stored as "ana@example.com".
     email: z.string().trim().toLowerCase().pipe(z.email()),
-    country: z.enum(Country),
+    countryId: z.uuid(),
     departmentId: z.uuid(),
     managerId: z.uuid(),
     jobTitle: z.string().trim().min(1).max(120),
     joiningDate: isoDate,
     /** Optional: HR chooses the initial password; otherwise one is generated and returned once. */
     password: z.string().min(10).max(128).optional(),
-    /** Employment status to start with. Defaults to probation; "on notice" makes no sense for a new person. */
-    status: z.enum(["ACTIVE", "ON_PROBATION"]).default("ON_PROBATION"),
+    /** Employment status to start with (an id from GET /meta). Defaults to probation; "on notice" makes no sense for a new person. */
+    statusId: z.uuid().optional(),
     /** Optional: also create this onboarding checklist for the new user, in the same transaction. */
     templateId: z.uuid().optional(),
   })
@@ -103,13 +108,23 @@ async function nextEmployeeCode(db: Prisma.TransactionClient): Promise<string> {
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
 export async function createUser(input: z.infer<typeof createUserBody>) {
-  const [department, manager, existing] = await Promise.all([
+  const [department, manager, existing, country, status, employeeRole] = await Promise.all([
     prisma.department.findUnique({ where: { id: input.departmentId }, select: { id: true } }),
-    prisma.user.findUnique({ where: { id: input.managerId }, select: { id: true, role: true } }),
+    prisma.user.findUnique({ where: { id: input.managerId }, select: { id: true, role: { select: { code: true } } } }),
     prisma.user.findUnique({ where: { email: input.email }, select: { id: true } }),
+    prisma.country.findUnique({ where: { id: input.countryId }, select: { id: true } }),
+    input.statusId
+      ? prisma.userStatus.findUnique({ where: { id: input.statusId }, select: { id: true, code: true } })
+      : prisma.userStatus.findUnique({ where: { code: "ON_PROBATION" }, select: { id: true, code: true } }),
+    prisma.role.findUnique({ where: { code: "EMPLOYEE" }, select: { id: true } }),
   ]);
+  if (!country) throw new ApiError("VALIDATION_FAILED", "Unknown country", [{ path: "countryId", message: "Country not found" }]);
+  if (!status || !(NEW_USER_STATUS_CODES as readonly string[]).includes(status.code)) {
+    throw new ApiError("VALIDATION_FAILED", "A new person starts as Active or On probation", [{ path: "statusId", message: "Must be Active or On probation" }]);
+  }
+  if (!employeeRole) throw new Error("The EMPLOYEE role is missing from the roles table");
   if (!department) throw new ApiError("VALIDATION_FAILED", "Unknown department", [{ path: "departmentId", message: "Department not found" }]);
-  if (!manager || manager.role !== "MANAGER") {
+  if (!manager || manager.role.code !== "MANAGER") {
     throw new ApiError("VALIDATION_FAILED", "Manager must be an existing user with the Manager role", [
       { path: "managerId", message: "Not a manager" },
     ]);
@@ -123,7 +138,7 @@ export async function createUser(input: z.infer<typeof createUserBody>) {
 
   const generated = input.password ? undefined : randomBytes(12).toString("base64url");
   const passwordHash = await hashPassword(input.password ?? generated!);
-  const { password: _password, joiningDate, templateId, ...fields } = input;
+  const { password: _password, joiningDate, templateId, statusId: _statusId, countryId, ...fields } = input;
 
   // Employee codes are max+1; if two creates race, the unique index rejects one and we retry.
   // Each attempt is its own transaction: the user and their checklist are created together or not at all.
@@ -136,7 +151,9 @@ export async function createUser(input: z.infer<typeof createUserBody>) {
             joiningDate: new Date(`${joiningDate}T00:00:00Z`),
             employeeCode: await nextEmployeeCode(tx),
             passwordHash,
-            role: "EMPLOYEE",
+            roleId: employeeRole.id,
+            countryId,
+            statusId: status.id,
           },
           include: userInclude,
         });

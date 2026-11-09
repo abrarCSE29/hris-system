@@ -18,12 +18,12 @@ beforeAll(async () => {
   ids = await seedBase(db, await bcrypt.hash("x", 4));
   const it = await db.department.findUniqueOrThrow({ where: { code: "ITOPS" } });
   itHead = it.headId!;
-  const members = await db.user.findMany({ where: { departmentId: it.id, role: "EMPLOYEE", status: "ACTIVE" }, orderBy: { employeeCode: "asc" } });
+  const members = await db.user.findMany({ where: { departmentId: it.id, role: { code: "EMPLOYEE" }, status: { code: "ACTIVE" } }, orderBy: { employeeCode: "asc" } });
   itWorker = members[0].id;
   itWorker2 = members[1].id;
-  await db.user.update({ where: { id: members[2].id }, data: { status: "ON_NOTICE" } });
+  await db.user.update({ where: { id: members[2].id }, data: { status: { connect: { code: "ON_NOTICE" } } } });
   onNotice = members[2].id;
-  engMember = (await db.user.findFirstOrThrow({ where: { department: { code: "ENG" }, role: "EMPLOYEE", status: "ACTIVE" } })).id;
+  engMember = (await db.user.findFirstOrThrow({ where: { department: { code: "ENG" }, role: { code: "EMPLOYEE" }, status: { code: "ACTIVE" } } })).id;
 });
 afterAll(() => db.$disconnect());
 

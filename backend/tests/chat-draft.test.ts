@@ -8,7 +8,7 @@ import { db } from "./db";
 
 let ids: Awaited<ReturnType<typeof seedBase>>;
 let userId: string;
-let user: { fullName: string; email: string; country: string };
+let user: { fullName: string; email: string; country: { name: string } };
 
 const SECRET = "SECRET-MESSAGE-TEXT-4d2b";
 const AI_URL = "http://ai.test";
@@ -17,7 +17,7 @@ beforeAll(async () => {
   await clearAll(db);
   ids = await seedBase(db, await bcrypt.hash("x", 4));
   userId = ids.personas.newHire;
-  user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { fullName: true, email: true, country: true } });
+  user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { fullName: true, email: true, country: { select: { name: true } } } });
 });
 afterAll(() => db.$disconnect());
 
@@ -97,7 +97,7 @@ describe("POST /requests/chat-draft: success", () => {
     const sent = JSON.parse(init.body);
     expect(Object.keys(sent).sort()).toEqual(["categories", "departments", "message", "requesterCountry", "requesterDepartment"]);
     expect(sent.message).toBe(SECRET);
-    expect(sent.requesterCountry).toBe(user.country);
+    expect(sent.requesterCountry).toBe(user.country.name);
     expect(sent.categories).toHaveLength(5);
     expect(sent.categories[0]).toHaveProperty("description");
     // nothing that identifies the person

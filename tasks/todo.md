@@ -492,11 +492,12 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 32: Backend reads and writes
 **Description:** Serializer, `loadAuthUser`, `/meta`, users list and create, department breakdown, dashboard (including the raw SQL), policy, onboarding, requests, intake and state machine use the new relations; compare on `code`.
 **Acceptance criteria:**
-- [ ] Every response that returns a user has the three objects; `/meta` returns `roles`, `countries`, `userStatuses`
-- [ ] Filters `roleId`, `countryId`, `statusId` take ids; unknown or malformed gives 422 with the path; create user takes `countryId` and optional `statusId`
-- [ ] Permissions are unchanged; the token is unchanged (the role is still read from the database)
+- [x] Every response that returns a user has the three objects; `/meta` returns `roles`, `countries`, `userStatuses`
+- [x] Filters `roleId`, `countryId`, `statusId` take ids; unknown or malformed gives 422 with the path; create user takes `countryId` and optional `statusId`
+- [x] Permissions are unchanged; the token is unchanged (the role is still read from the database)
 **Verification:**
-- [ ] Vitest; no query per user (relations loaded together)
+- [x] Vitest; no query per user (relations loaded together)
+**Done:** also the requests and onboarding lists (`countryId`), the embedded `requester` and `employee` countries as objects, `GET /meta` returns `roles`, `countries`, `userStatuses`, new `src/lib/{lookups,lookup-ids,lookup-lists}.ts`; the AI service is sent the country *name*. Countries are listed by name (Bangladesh, Cyprus, Malaysia, Sri Lanka), a new order on the dashboard and breakdown.
 **Dependencies:** T31
 **Files:** `backend/src/lib/*`, `backend/src/services/*`, `backend/app/api/v1/meta/route.ts`
 **Scope:** L
@@ -504,10 +505,10 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 33: Seed and backend tests
 **Description:** The seed creates the lookup rows first and refers to them by code; test helpers and assertions use the new shape.
 **Acceptance criteria:**
-- [ ] The seed still produces 7 Managers, 3 HR Admins and 90 Employees; all backend tests pass
-- [ ] No test or seed hard-codes a generated id
+- [x] The seed still produces 7 Managers, 3 HR Admins and 90 Employees; all backend tests pass
+- [x] No test or seed hard-codes a generated id
 **Verification:**
-- [ ] `npm test` in `backend/`
+- [x] `npm test` in `backend/`
 **Dependencies:** T32
 **Files:** `backend/prisma/seed/*`, `backend/tests/*`
 **Scope:** L

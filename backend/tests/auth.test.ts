@@ -38,7 +38,8 @@ describe("POST /auth/login", () => {
     const res = await login(post({ email: "ana@example.com", password: PASSWORD }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
-    expect(body.user).toMatchObject({ id: user.id, email: "ana@example.com", role: "EMPLOYEE", joiningDate: "2024-01-01" });
+    expect(body.user).toMatchObject({ id: user.id, email: "ana@example.com", role: { code: "EMPLOYEE", name: "Employee" }, country: { shortcode: "BD", name: "Bangladesh" }, status: { code: "ACTIVE", name: "Active" }, joiningDate: "2024-01-01" });
+    expect(body.user.role.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(body.user.department).toHaveProperty("name");
     expect(JSON.stringify(body)).not.toMatch(/passwordHash|password_hash|headOfDepartmentId/);
     const cookie = res.headers.get("set-cookie")!;
@@ -88,7 +89,7 @@ describe("GET /auth/me and withAuth", () => {
     const res = await me(withCookie(await signSession(user.id)));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
-      user: { id: user.id, role: "MANAGER" },
+      user: { id: user.id, role: { code: "MANAGER" } },
       isNewHire: false,
       headOfDepartmentId: dept.id,
     });
@@ -135,7 +136,7 @@ describe("GET /auth/me and withAuth", () => {
     expect((await guarded(new Request("http://x/api"))).status).toBe(401);
     expect((await guarded(withCookie(token))).status).toBe(403);
 
-    await db.user.update({ where: { id: user.id }, data: { role: "HR_ADMIN" } });
+    await db.user.update({ where: { id: user.id }, data: { role: { connect: { code: "HR_ADMIN" } } } });
     expect((await guarded(withCookie(token))).status).toBe(200);
   });
 

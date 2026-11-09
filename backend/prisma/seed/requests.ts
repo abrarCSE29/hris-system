@@ -111,10 +111,10 @@ export async function seedRequests(db: PrismaClient, base: Base) {
   const catId = new Map(categories.map((c) => [c.code, c.id]));
   const depts = await db.department.findMany();
   const headOf = new Map(depts.map((d) => [d.id, d.headId!]));
-  const users = await db.user.findMany();
+  const users = await db.user.findMany({ include: { role: { select: { code: true } }, status: { select: { code: true } } } });
   const byId = new Map(users.map((u) => [u.id, u]));
-  const requesters = users.filter((u) => u.status !== "ON_NOTICE");
-  const workers = (deptId: string) => users.filter((u) => u.departmentId === deptId && u.status !== "ON_NOTICE" && u.role === "EMPLOYEE");
+  const requesters = users.filter((u) => u.status.code !== "ON_NOTICE");
+  const workers = (deptId: string) => users.filter((u) => u.departmentId === deptId && u.status.code !== "ON_NOTICE" && u.role.code === "EMPLOYEE");
 
   // Lists with exact counts, shuffled independently, then paired up.
   const statuses = shuffle(expand(STATUS_COUNTS));

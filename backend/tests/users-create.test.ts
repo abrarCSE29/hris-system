@@ -4,22 +4,24 @@ import { POST as login } from "../app/api/v1/auth/login/route";
 import { GET as getUsers, POST as createUser } from "../app/api/v1/users/route";
 import { clearAll, seedBase } from "../prisma/seed/base";
 import { SESSION_COOKIE, signSession } from "@/lib/auth";
-import { db } from "./db";
+import { countryId, db, statusId } from "./db";
 
 let ids: Awaited<ReturnType<typeof seedBase>>;
 let deptId: string;
+let malaysiaId: string, activeId: string, probationId: string, onNoticeId: string;
 
 beforeAll(async () => {
   await clearAll(db);
   ids = await seedBase(db, await bcrypt.hash("x", 4));
   deptId = ids.departmentIds.ENG;
+  [malaysiaId, activeId, probationId, onNoticeId] = await Promise.all([countryId("MY"), statusId("ACTIVE"), statusId("ON_PROBATION"), statusId("ON_NOTICE")]);
 });
 afterAll(() => db.$disconnect());
 
 const body = (over: Record<string, unknown> = {}) => ({
   fullName: "Test Person",
   email: "test.person@hris.test",
-  country: "MALAYSIA",
+  countryId: malaysiaId,
   departmentId: deptId,
   managerId: ids.personas.manager,
   jobTitle: "Software Engineer",
@@ -53,8 +55,8 @@ describe("POST /users", () => {
     const out = await json(res);
     expect(res.status).toBe(201);
     expect(out.user).toMatchObject({
-      fullName: "Test Person", email: "test.person@hris.test", role: "EMPLOYEE", status: "ON_PROBATION",
-      country: "MALAYSIA", managerId: ids.personas.manager, joiningDate: "2026-11-02", employeeCode: "EMP-0101",
+      fullName: "Test Person", email: "test.person@hris.test", role: { code: "EMPLOYEE" }, status: { code: "ON_PROBATION" },
+      country: { shortcode: "MY", name: "Malaysia" }, managerId: ids.personas.manager, joiningDate: "2026-11-02", employeeCode: "EMP-0101",
     });
     expect(JSON.stringify(out)).not.toMatch(/passwordHash/);
     expect(typeof out.temporaryPassword).toBe("string");
@@ -68,13 +70,13 @@ describe("POST /users", () => {
 
   it("starts people on probation by default, or Active when HR says so", async () => {
     const def = await json(await post(hr(), body({ email: "status.default@hris.test" })));
-    expect(def.user.status).toBe("ON_PROBATION");
-    const probation = await json(await post(hr(), body({ email: "status.prob@hris.test", status: "ON_PROBATION" })));
-    expect(probation.user.status).toBe("ON_PROBATION");
-    const active = await post(hr(), body({ email: "status.active@hris.test", status: "ACTIVE" }));
+    expect(def.user.status.code).toBe("ON_PROBATION");
+    const probation = await json(await post(hr(), body({ email: "status.prob@hris.test", statusId: probationId })));
+    expect(probation.user.status.code).toBe("ON_PROBATION");
+    const active = await post(hr(), body({ email: "status.active@hris.test", statusId: activeId }));
     expect(active.status).toBe(201);
-    expect((await json(active)).user.status).toBe("ACTIVE");
-    expect((await db.user.findUniqueOrThrow({ where: { email: "status.active@hris.test" } })).status).toBe("ACTIVE");
+    expect((await json(active)).user.status.code).toBe("ACTIVE");
+    expect((await db.user.findUniqueOrThrow({ where: { email: "status.active@hris.test" }, include: { status: true } })).status.code).toBe("ACTIVE");
   });
 
   it("does not let a new person start On notice, or with an invented status", async () => {
@@ -112,7 +114,9 @@ describe("POST /users", () => {
     ["missing fullName", { fullName: undefined }],
     ["blank jobTitle", { jobTitle: "  " }],
     ["bad email", { email: "not-an-email" }],
-    ["unknown country", { country: "ATLANTIS" }],
+    ["country that is not an id", { countryId: "ATLANTIS" }],
+    ["the old country field", { country: "MALAYSIA" }],
+    ["status that is not an id", { statusId: "ACTIVE" }],
     ["bad date", { joiningDate: "02/11/2026" }],
     ["impossible date", { joiningDate: "2026-02-31" }],
     ["short password", { password: "short" }],
@@ -122,6 +126,19 @@ describe("POST /users", () => {
     const res = await post(hr(), body({ email: "bad@hris.test", ...over }));
     expect(res.status).toBe(422);
     expect(await db.user.count({ where: { email: "bad@hris.test" } })).toBe(0);
+  });
+
+  it("returns 422 for a country or status id that does not exist, and for a status a new person cannot start with", async () => {
+    const noCountry = await post(hr(), body({ email: "c1@hris.test", countryId: crypto.randomUUID() }));
+    expect(noCountry.status).toBe(422);
+    expect((await json(noCountry)).error.details[0].path).toBe("countryId");
+    const noStatus = await post(hr(), body({ email: "c2@hris.test", statusId: crypto.randomUUID() }));
+    expect(noStatus.status).toBe(422);
+    expect((await json(noStatus)).error.details[0].path).toBe("statusId");
+    const onNotice = await post(hr(), body({ email: "c3@hris.test", statusId: onNoticeId }));
+    expect(onNotice.status).toBe(422);
+    expect((await json(onNotice)).error.details[0].path).toBe("statusId");
+    expect(await db.user.count({ where: { email: { in: ["c1@hris.test", "c2@hris.test", "c3@hris.test"] } } })).toBe(0);
   });
 
   it("returns 422 for an unknown department or a manager who is not a Manager", async () => {

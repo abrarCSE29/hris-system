@@ -1,11 +1,16 @@
 import { z } from "zod";
-import { Country, Prisma, RequestChannel, RequestPriority, RequestStatus } from "@/generated/prisma/client";
+import { Prisma, RequestChannel, RequestPriority, RequestStatus } from "@/generated/prisma/client";
 import type { AuthUser } from "@/lib/auth";
 import { ApiError } from "@/lib/errors";
+import type { StatusCode } from "@/lib/lookups";
+import { requireLookupId } from "@/lib/lookup-ids";
 import { paginated, type Paging } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { scopeRequests } from "./policy";
-import { allowedActions, checkTransition } from "./state-machine";
+import { allowedActions, checkTransition, type Actor } from "./state-machine";
+
+/** What the workflow rules need to know about the signed-in person: their role as a code, not the database row. */
+const toActor = (u: AuthUser): Actor => ({ id: u.id, role: u.role.code as Actor["role"], headOfDepartmentId: u.headOfDepartmentId });
 
 // ── input schemas ────────────────────────────────────────────────────────────
 
@@ -27,7 +32,7 @@ export const listRequestsQuery = z.object({
   categoryId: z.uuid().optional(),
   priority: z.enum(RequestPriority).optional(),
   /** Country of the person who submitted the request. */
-  country: z.enum(Country).optional(),
+  countryId: z.uuid().optional(),
   channel: z.enum(RequestChannel).optional(),
   /** "true": only requests the signed-in person raised themselves (a Manager or HR Admin otherwise sees more). */
   mine: z.enum(["true", "false"]).optional(),
@@ -52,7 +57,7 @@ export const commentBody = z.object({ body: z.string().trim().min(1).max(5000) }
 const summaryInclude = {
   category: { select: { id: true, code: true, name: true } },
   handlingDepartment: { select: { id: true, code: true, name: true } },
-  requester: { select: { id: true, fullName: true, country: true } },
+  requester: { select: { id: true, fullName: true, country: { select: { id: true, shortcode: true, name: true } } } },
   assignee: { select: { id: true, fullName: true } },
 } satisfies Prisma.ServiceRequestInclude;
 
@@ -128,13 +133,14 @@ export async function createRequest(actor: AuthUser, input: z.infer<typeof creat
 }
 
 export async function listRequests(actor: AuthUser, q: z.infer<typeof listRequestsQuery>, paging: Paging) {
+  await requireLookupId("country", q.countryId, "countryId");
   const filters: Prisma.ServiceRequestWhereInput = {
     status: q.status,
     categoryId: q.categoryId,
     priority: q.priority,
     channel: q.channel,
     ...(q.mine === "true" && { requesterId: actor.id }),
-    ...(q.country && { requester: { country: q.country } }),
+    ...(q.countryId && { requester: { countryId: q.countryId } }),
   };
   const where: Prisma.ServiceRequestWhereInput = { AND: [scopeRequests(actor), filters] };
   const [rows, total] = await Promise.all([
@@ -184,7 +190,7 @@ export async function getRequestDetail(actor: AuthUser, id: string) {
       createdAt: e.createdAt.toISOString(),
     })),
     comments: comments.map((c) => ({ id: c.id, body: c.body, author: c.author, createdAt: c.createdAt.toISOString() })),
-    allowedActions: allowedActions(request, actor),
+    allowedActions: allowedActions(request, toActor(actor)),
   };
 }
 
@@ -210,11 +216,16 @@ export async function transitionRequest(actor: AuthUser, id: string, input: z.in
     input.action === "assign" && input.assigneeId
       ? await prisma.user.findUnique({
           where: { id: input.assigneeId },
-          select: { id: true, departmentId: true, status: true },
+          select: { id: true, departmentId: true, status: { select: { code: true } } },
         })
       : null;
 
-  const result = checkTransition(input.action, request, actor, candidate);
+  const result = checkTransition(
+    input.action,
+    request,
+    toActor(actor),
+    candidate && { id: candidate.id, departmentId: candidate.departmentId, status: candidate.status.code as StatusCode },
+  );
   if (!result.ok) {
     if (result.reason === "invalid_assignee") {
       throw new ApiError("VALIDATION_FAILED", result.message, [{ path: "assigneeId", message: result.message }]);

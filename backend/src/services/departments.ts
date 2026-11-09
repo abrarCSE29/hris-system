@@ -1,32 +1,29 @@
-import { Country, Role, UserStatus } from "@/generated/prisma/client";
+import { loadLookups } from "@/lib/lookup-lists";
 import { prisma } from "@/lib/prisma";
 
 /**
  * Department breakdown for HR (spec §4.7). Computed from the live tables on every call. Everyone counts, whatever
- * their status, the same basis as the dashboard's headcount, so the totals agree.
+ * their status, the same basis as the dashboard's headcount, so the totals agree. Every country, status and role is listed, with
+ * zeros, so the table never misses a row. Each is returned as the object from its lookup table.
  */
 
-const COUNTRIES = Object.values(Country);
-const STATUSES = Object.values(UserStatus);
-const ROLES = Object.values(Role);
-
 export async function getDepartmentBreakdown() {
-  const [departments, rows] = await Promise.all([
+  const [departments, rows, lookups] = await Promise.all([
     prisma.department.findMany({
       select: { id: true, code: true, name: true, head: { select: { id: true, fullName: true } } },
     }),
-    prisma.user.groupBy({ by: ["departmentId", "country", "status", "role"], _count: true }),
+    prisma.user.groupBy({ by: ["departmentId", "countryId", "statusId", "roleId"], _count: true }),
+    loadLookups(),
   ]);
 
   const build = (departmentId: string) => {
     const mine = rows.filter((r) => r.departmentId === departmentId);
-    const split = <K extends "country" | "status" | "role">(key: K, values: readonly string[]) =>
-      values.map((v) => ({ [key]: v, count: mine.filter((r) => r[key] === v).reduce((n, r) => n + r._count, 0) }));
+    const count = (match: (r: (typeof mine)[number]) => boolean) => mine.filter(match).reduce((n, r) => n + r._count, 0);
     return {
-      headcount: mine.reduce((n, r) => n + r._count, 0),
-      byCountry: split("country", COUNTRIES) as { country: Country; count: number }[],
-      byStatus: split("status", STATUSES) as { status: UserStatus; count: number }[],
-      byRole: split("role", ROLES) as { role: Role; count: number }[],
+      headcount: count(() => true),
+      byCountry: lookups.countries.map((country) => ({ country, count: count((r) => r.countryId === country.id) })),
+      byStatus: lookups.statuses.map((status) => ({ status, count: count((r) => r.statusId === status.id) })),
+      byRole: lookups.roles.map((role) => ({ role, count: count((r) => r.roleId === role.id) })),
     };
   };
 

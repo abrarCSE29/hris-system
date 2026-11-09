@@ -48,9 +48,9 @@ describe("GET /departments/breakdown", () => {
 
     const itops = body.departments.find((d) => d.code === "ITOPS")!;
     const [{ n }] = await sql<{ n: bigint }>(
-      `SELECT COUNT(*) AS n FROM users u JOIN departments d ON d.id = u.department_id WHERE d.code = 'ITOPS' AND u.country = 'CYPRUS'`,
+      `SELECT COUNT(*) AS n FROM users u JOIN departments d ON d.id = u.department_id JOIN countries co ON co.id = u.country_id WHERE d.code = 'ITOPS' AND co.shortcode = 'CY'`,
     );
-    expect(itops.byCountry.find((c) => c.country === "CYPRUS")?.count).toBe(Number(n));
+    expect(itops.byCountry.find((c) => c.country.shortcode === "CY")?.count).toBe(Number(n));
     expect(itops.head?.fullName).toBe("Farid Tan");
   });
 
@@ -65,9 +65,9 @@ describe("GET /departments/breakdown", () => {
     const dept = (await get()).departments.find((d) => d.id === emptyId)!;
     expect(dept.headcount).toBe(0);
     expect(dept.head).toBeNull();
-    expect(dept.byCountry.map((c) => c.country)).toEqual(["BANGLADESH", "MALAYSIA", "SRI_LANKA", "CYPRUS"]);
-    expect(dept.byStatus.map((s) => s.status)).toEqual(["ACTIVE", "ON_PROBATION", "ON_NOTICE"]);
-    expect(dept.byRole.map((r) => r.role)).toEqual(["EMPLOYEE", "MANAGER", "HR_ADMIN"]);
+    expect(dept.byCountry.map((c) => c.country.shortcode)).toEqual(["BD", "CY", "MY", "LK"]);
+    expect(dept.byStatus.map((s) => s.status.code)).toEqual(["ACTIVE", "ON_PROBATION", "ON_NOTICE"]);
+    expect(dept.byRole.map((r) => r.role.code)).toEqual(["EMPLOYEE", "MANAGER", "HR_ADMIN"]);
     expect([...dept.byCountry, ...dept.byStatus, ...dept.byRole].every((x) => x.count === 0)).toBe(true);
   });
 

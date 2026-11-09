@@ -1,6 +1,6 @@
 # Spec: lookup tables for a user's role, country and status
 
-Status: **draft v2, waiting for approval.** Last change: the token carries only the user id (your decision). Source: `docs/ideas/lookup-tables-user-fields.md` (agreed in conversation).
+Status: **v3, building on the approved v2.** v3 records two things found while building (please review): the same id filters and country objects also apply to the requests and onboarding lists, and countries are listed by name. v2: the token carries only the user id (your decision). Source: `docs/ideas/lookup-tables-user-fields.md` (agreed in conversation).
 Related: `docs/architecture-v1.md` (data model), `backend/prisma/schema.prisma`.
 
 ## Objective
@@ -45,6 +45,11 @@ fields as objects; the three lists live in the database; no behaviour depends on
 11. **Session (your decision).** The token carries **only the user id**, exactly as today (`backend/src/lib/auth.ts`). The role is read from the
     database on every request, so a role change applies at once. `GET /auth/me` and the sign-in response return the role as `{ id, code, name }`.
     Nothing about the token changes.
+12. **Also affected (found while building).** The requests list and the onboarding instances list had a `country` filter on the person's country;
+    both become `countryId` with the same 422 rule. The `requester` (requests) and `employee` (onboarding) objects, and the new hires in the
+    dashboard, carry `country` as `{ id, shortcode, name }`. The chat assistant is sent the country's **name** ("Bangladesh").
+13. **Order.** There is no sort column, so countries are listed by name (Bangladesh, Cyprus, Malaysia, Sri Lanka), roles and statuses in
+    their natural order. On the dashboard and the department table the countries therefore appear in that order, not Bangladesh, Malaysia, Sri Lanka, Cyprus.
 
 ## Commands
 

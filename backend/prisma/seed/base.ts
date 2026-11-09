@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { Country, PrismaClient, Role, UserStatus } from "../../src/generated/prisma/client";
+import type { PrismaClient } from "../../src/generated/prisma/client";
+import type { RoleCode, StatusCode } from "../../src/lib/lookups";
 import {
-  CATEGORIES, COUNTRY_COUNTS, DEPARTMENTS, EMAIL_DOMAIN, NAMES, NEW_HIRES, PERSONA_EMAILS,
+  CATEGORIES, COUNTRY_COUNTS, COUNTRY_ROWS, DEPARTMENTS, EMAIL_DOMAIN, NAMES, NEW_HIRES, PERSONA_EMAILS, ROLE_ROWS, STATUS_ROWS,
+  type Shortcode,
 } from "./data";
 
 /** Small deterministic PRNG so every seed run produces the same people. */
@@ -22,6 +24,27 @@ const TABLES = [
   "users", "departments",
 ];
 
+/**
+ * Makes sure the rows of the role, country and status tables exist (the migration normally created them) and returns functions that
+ * turn a code into the row's id. The seed refers to these rows by code only: ids differ between databases.
+ */
+export async function ensureLookups(db: PrismaClient) {
+  for (const [code, name] of ROLE_ROWS) await db.role.upsert({ where: { code }, update: { name }, create: { code, name } });
+  for (const [shortcode, name] of COUNTRY_ROWS) await db.country.upsert({ where: { shortcode }, update: { name }, create: { shortcode, name } });
+  for (const [code, name] of STATUS_ROWS) await db.userStatus.upsert({ where: { code }, update: { name }, create: { code, name } });
+  const [roles, countries, statuses] = await Promise.all([db.role.findMany(), db.country.findMany(), db.userStatus.findMany()]);
+  const idOf = <K extends string>(rows: { id: string }[], key: (r: never) => K, what: string) => (k: K) => {
+    const row = rows.find((r) => key(r as never) === k);
+    if (!row) throw new Error(`No ${what} row for ${k}`);
+    return row.id;
+  };
+  return {
+    role: idOf<RoleCode>(roles, (r: { code: RoleCode }) => r.code, "role"),
+    country: idOf<Shortcode>(countries, (r: { shortcode: Shortcode }) => r.shortcode, "country"),
+    status: idOf<StatusCode>(statuses, (r: { code: StatusCode }) => r.code, "status"),
+  };
+}
+
 /** Deletes all application data and resets the SR- sequence. */
 export async function clearAll(db: PrismaClient) {
   await db.$executeRawUnsafe(`TRUNCATE ${TABLES.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`);
@@ -31,11 +54,11 @@ export async function clearAll(db: PrismaClient) {
 interface Planned {
   id: string;
   deptCode: string;
-  role: Role;
+  role: RoleCode;
   title: string;
-  country: Country;
+  country: Shortcode;
   managerId: string | null;
-  status: UserStatus;
+  status: StatusCode;
   joinedDaysAgo: number;
   fullName: string;
   email: string;
@@ -53,12 +76,13 @@ const dateDaysAgo = (days: number) => {
  * Assumes empty tables. Later parts (requests, onboarding) build on the returned references.
  */
 export async function seedBase(db: PrismaClient, passwordHash: string) {
+  const lookups = await ensureLookups(db);
   const rand = mulberry32(20260101);
   const int = (min: number, max: number) => min + Math.floor(rand() * (max - min + 1));
   const pick = <T>(xs: readonly T[]) => xs[Math.floor(rand() * xs.length)];
 
   // 100 country slots in the exact required split, shuffled (Fisher-Yates).
-  const slots = (Object.entries(COUNTRY_COUNTS) as [Country, number][]).flatMap(([c, n]) => Array<Country>(n).fill(c));
+  const slots = (Object.entries(COUNTRY_COUNTS) as [Shortcode, number][]).flatMap(([c, n]) => Array<Shortcode>(n).fill(c));
   for (let i = slots.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));
     [slots[i], slots[j]] = [slots[j], slots[i]];
@@ -66,7 +90,7 @@ export async function seedBase(db: PrismaClient, passwordHash: string) {
 
   const usedNames = new Set<string>();
   const usedEmails = new Set<string>();
-  const person = (country: Country) => {
+  const person = (country: Shortcode) => {
     const pool = NAMES[country];
     for (;;) {
       const first = pick(pool.first), last = pick(pool.last);
@@ -85,7 +109,7 @@ export async function seedBase(db: PrismaClient, passwordHash: string) {
   const planned: Planned[] = [];
   const headOf = new Map<string, Planned>();
   let slot = 0;
-  const add = (deptCode: string, role: Role, title: string, joinedDaysAgo: number, managerId: string | null) => {
+  const add = (deptCode: string, role: RoleCode, title: string, joinedDaysAgo: number, managerId: string | null) => {
     const country = slots[slot++];
     const p: Planned = { id: randomUUID(), deptCode, role, title, country, managerId, status: "ACTIVE", joinedDaysAgo, ...person(country) };
     planned.push(p);
@@ -122,7 +146,7 @@ export async function seedBase(db: PrismaClient, passwordHash: string) {
     return p;
   };
   for (let i = 0; i < 3; i++) { const p = pickFree((e) => e.deptCode !== "ITOPS"); p.status = "ON_PROBATION"; p.joinedDaysAgo = int(60, 150); }
-  for (const country of ["BANGLADESH", "MALAYSIA", "SRI_LANKA", "CYPRUS"] as Country[]) {
+  for (const country of COUNTRY_ROWS.map(([shortcode]) => shortcode)) {
     pickFree((e) => e.country === country && e.deptCode !== "ITOPS").status = "ON_NOTICE";
   }
 
@@ -148,13 +172,13 @@ export async function seedBase(db: PrismaClient, passwordHash: string) {
       fullName: p.fullName,
       email: p.email,
       passwordHash,
-      role: p.role,
-      country: p.country,
+      roleId: lookups.role(p.role),
+      countryId: lookups.country(p.country),
       departmentId: deptIds.get(p.deptCode)!,
       managerId: p.managerId,
       jobTitle: p.title,
       joiningDate: dateDaysAgo(p.joinedDaysAgo),
-      status: p.status,
+      statusId: lookups.status(p.status),
     })),
   });
   for (const d of DEPARTMENTS) {
