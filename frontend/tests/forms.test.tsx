@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 const push = vi.fn();
 const createRequest = vi.fn();
 const createUser = vi.fn();
+const useUsersCall = vi.fn();
 
 const META = {
   departments: [
@@ -13,13 +14,16 @@ const META = {
     { id: "d-eng", code: "ENG", name: "Engineering", headId: "m-eng" },
   ],
   requestCategories: [{ id: "c-laptop", code: "IT_EQUIPMENT", name: "IT Equipment", handlingDepartmentId: "d-it" }],
-  enums: { countries: ["BANGLADESH", "CYPRUS"], requestPriorities: ["LOW", "MEDIUM", "HIGH", "URGENT"], userStatuses: [], roles: [], requestStatuses: [], ownerTypes: [], onboardingTaskStatuses: [] },
+  countries: [{ id: "c-bd", shortcode: "BD", name: "Bangladesh" }, { id: "c-cy", shortcode: "CY", name: "Cyprus" }],
+  roles: [{ id: "r-emp", code: "EMPLOYEE", name: "Employee" }, { id: "r-mgr", code: "MANAGER", name: "Manager" }, { id: "r-hr", code: "HR_ADMIN", name: "HR Admin" }],
+  userStatuses: [{ id: "s-act", code: "ACTIVE", name: "Active" }, { id: "s-prob", code: "ON_PROBATION", name: "On probation" }, { id: "s-not", code: "ON_NOTICE", name: "On notice" }],
+  enums: { requestPriorities: ["LOW", "MEDIUM", "HIGH", "URGENT"], requestStatuses: [], ownerTypes: [], onboardingTaskStatuses: [] },
 };
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: vi.fn() }) }));
 vi.mock("@/lib/hooks/users", () => ({
   useMeta: () => ({ data: META }),
-  useUsers: () => ({ data: { data: [{ id: "m-eng", fullName: "Eng Manager", jobTitle: "Engineering Manager" }, { id: "m-it", fullName: "IT Head", jobTitle: "Head of IT" }] } }),
+  useUsers: (filters: unknown, options: unknown) => (useUsersCall(filters, options), { data: { data: [{ id: "m-eng", fullName: "Eng Manager", jobTitle: "Engineering Manager" }, { id: "m-it", fullName: "IT Head", jobTitle: "Head of IT" }] } }),
 }));
 vi.mock("@/lib/hooks/requests", () => ({ useCreateRequest: () => ({ mutate: createRequest, isPending: false, error: null }) }));
 vi.mock("@/lib/hooks/onboarding", () => ({
@@ -91,10 +95,26 @@ describe("Add new hire form", () => {
     expect(createUser).toHaveBeenCalledOnce();
     const body = createUser.mock.calls[0][0];
     expect(body).toMatchObject({
-      fullName: "Kim Lee", email: "kim@hris.test", country: "CYPRUS", departmentId: "d-eng", managerId: "m-eng", jobTitle: "Engineer", status: "ON_PROBATION",
+      fullName: "Kim Lee", email: "kim@hris.test", countryId: "c-cy", departmentId: "d-eng", managerId: "m-eng", jobTitle: "Engineer", statusId: "s-prob",
     });
     expect(body).not.toHaveProperty("templateId"); // "None" must not send a template
     expect(body).not.toHaveProperty("password"); // blank = generate one
+  });
+
+  it("finds the managers by the id of the Manager role from the role list, not by a code", () => {
+    render(<NewPersonPage />);
+    expect(useUsersCall).toHaveBeenCalledWith({ roleId: "r-mgr", pageSize: 100 }, { enabled: true });
+  });
+
+  it("sends the Employee role by default and the chosen role otherwise", async () => {
+    render(<NewPersonPage />);
+    await fillRequired();
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(createUser.mock.calls[0][0]).toMatchObject({ roleId: "r-emp" });
+    createUser.mockClear();
+    await choose("Role", "HR Admin");
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(createUser.mock.calls[0][0]).toMatchObject({ roleId: "r-hr" });
   });
 
   it("includes the checklist and a chosen status", async () => {
@@ -103,7 +123,7 @@ describe("Add new hire form", () => {
     await choose("Employment status", "Active");
     await choose(/Onboarding checklist/, "Standard Onboarding (10 tasks)");
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
-    expect(createUser.mock.calls[0][0]).toMatchObject({ status: "ACTIVE", templateId: "t-std" });
+    expect(createUser.mock.calls[0][0]).toMatchObject({ statusId: "s-act", templateId: "t-std" });
   });
 
   it("can go back to no checklist", async () => {

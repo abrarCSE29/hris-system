@@ -16,7 +16,7 @@ afterEach(cleanup);
 const hire = (id: string, fullName: string, title: string) => ({
   id,
   fullName,
-  country: "CYPRUS",
+  country: { id: "c-cy", shortcode: "CY", name: "Cyprus" },
   department: { id: "eng", name: "Engineering" },
   instanceId: `i-${id}`,
   openRequests: [{ id: `r-${id}`, reference: `SR-${id}`, title, status: "SUBMITTED" as const, priority: "HIGH" as const }],

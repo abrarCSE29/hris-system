@@ -9,7 +9,7 @@ export interface RequestFilters {
   status?: string;
   categoryId?: string;
   priority?: string;
-  country?: string;
+  countryId?: string;
   page?: number;
   pageSize?: number;
 }

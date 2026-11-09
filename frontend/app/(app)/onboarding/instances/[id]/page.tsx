@@ -8,7 +8,7 @@ import { TaskList } from "@/components/onboarding/task-list";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiClientError } from "@/lib/api";
-import { formatDate, labelize } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { useInstance } from "@/lib/hooks/onboarding";
 
 export default function InstancePage() {
@@ -50,7 +50,7 @@ export default function InstancePage() {
       <header className="space-y-3">
         <h1 className="text-2xl font-semibold tracking-tight">{c.employee.fullName}</h1>
         <p className="text-sm text-muted-foreground">
-          {c.employee.jobTitle} · {c.employee.department.name} · {labelize(c.employee.country)}
+          {c.employee.jobTitle} · {c.employee.department.name} · {c.employee.country.name}
           <br />
           {c.template.name} · started {formatDate(c.startDate)}
           {c.status === "COMPLETED" && " · completed"}

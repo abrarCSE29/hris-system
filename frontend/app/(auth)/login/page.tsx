@@ -19,7 +19,7 @@ export default function LoginPage() {
 
   // Already signed in (valid session): skip the form.
   useEffect(() => {
-    if (me.data) router.replace(homeForRole(me.data.user.role));
+    if (me.data) router.replace(homeForRole(me.data.user.role.code));
   }, [me.data, router]);
 
   return (

@@ -1,6 +1,6 @@
 # Spec: lookup tables for a user's role, country and status
 
-Status: **v3, building on the approved v2.** v3 records two things found while building (please review): the same id filters and country objects also apply to the requests and onboarding lists, and countries are listed by name. v2: the token carries only the user id (your decision). Source: `docs/ideas/lookup-tables-user-fields.md` (agreed in conversation).
+Status: **v4.** v4: the Add new hire form and `POST /users` take a role. **v3, building on the approved v2.** v3 records two things found while building (please review): the same id filters and country objects also apply to the requests and onboarding lists, and countries are listed by name. v2: the token carries only the user id (your decision). Source: `docs/ideas/lookup-tables-user-fields.md` (agreed in conversation).
 Related: `docs/architecture-v1.md` (data model), `backend/prisma/schema.prisma`.
 
 ## Objective
@@ -34,7 +34,7 @@ fields as objects; the three lists live in the database; no behaviour depends on
 5. **Filters take the id (your choice).** Query parameters are `roleId`, `countryId`, `statusId` (the project's `…Id` naming, like
    `categoryId`). Each must be a UUID that exists; otherwise `422` with the field path, the same as `handlingDepartmentId`.
 6. **Creating a user** takes `countryId` (required) and `statusId` (optional, default "On probation"); only Active or On probation
-   are allowed, checked by `code`. The role is always Employee, looked up by code. Invalid ids give `422` with the field path.
+   are allowed, checked by `code`. The role is `roleId` (optional, an id from `GET /meta`), Employee by default (v4, your request). A Manager must be the only Manager of the department (422 on `roleId` otherwise, following "one manager per department for now"), and becomes the department's listed head when it has none. Invalid ids give `422` with the field path.
 7. **Reference data.** `GET /meta` returns `roles`, `countries` and `userStatuses` as lists of the objects above (so the frontend
    gets the ids it needs for filters and forms). The old `enums.roles`, `enums.countries` and `enums.userStatuses` are removed.
 8. **Dashboard and department breakdown** group by the new tables. `country` fields in their responses become the country object.

@@ -7,16 +7,18 @@ import type { Assignable, Meta, Paginated, User } from "@/lib/types";
 
 export interface UserFilters {
   search?: string;
-  country?: string;
+  /** Ids of rows from the lookup lists in `useMeta()`. */
+  countryId?: string;
   departmentId?: string;
-  status?: string;
-  role?: string;
+  statusId?: string;
+  roleId?: string;
   page?: number;
   pageSize?: number;
 }
 
-export function useUsers(filters: UserFilters) {
+export function useUsers(filters: UserFilters, options: { enabled?: boolean } = {}) {
   return useQuery({
+    enabled: options.enabled,
     queryKey: ["users", filters],
     queryFn: () => api<Paginated<User>>(`/users${buildQuery({ ...filters })}`),
     placeholderData: keepPreviousData,

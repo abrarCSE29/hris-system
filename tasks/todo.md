@@ -484,7 +484,7 @@ The chat head sends `channel: "CHAT"` when submitting.
 - [x] Old columns and enums gone; Prisma client regenerated
 **Verification:**
 - [x] Migration test on a database with users in every old role, country and status; the drift check is empty
-**Done:** `backend/prisma/migrations/20261110090000_user_lookup_tables/`, `backend/tests/migration-lookup-tables.test.ts` (6 tests, mutation-checked). Applied to the test database only; the dev database is **not** migrated yet, so the user's running dev servers stay on the old shape until T32 and T33 are done. The rest of the backend does not compile until T32/T33 (188 type errors, the worklist).
+**Done:** `backend/prisma/migrations/20261110090000_user_lookup_tables/`, `backend/tests/migration-lookup-tables.test.ts` (6 tests, mutation-checked). Applied to the test database, and later to the dev database (100 users carried over, 19 role/country/status combinations matched, drift check empty; backup taken first). The rest of the backend does not compile until T32/T33 (188 type errors, the worklist).
 **Dependencies:** none
 **Files:** `backend/prisma/schema.prisma`, a new migration, `backend/tests/schema.test.ts`
 **Scope:** M
@@ -516,13 +516,24 @@ The chat head sends `channel: "CHAT"` when submitting.
 ### Task 34: Frontend
 **Description:** Types, hooks, pages and components show `name`, compare on `code`, and send ids in filters and forms.
 **Acceptance criteria:**
-- [ ] The people, department, dashboard and onboarding screens look and behave as before
-- [ ] Filters and the new-user form send ids taken from `/meta`
+- [x] The people, department, dashboard and onboarding screens look and behave as before
+- [x] Filters and the new-user form send ids taken from `/meta`
 **Verification:**
-- [ ] `npx tsc --noEmit`; `npx vitest run`; manual in the browser
+- [x] `npx tsc --noEmit`; `npx vitest run` (145 pass)
+- [ ] Manual in the browser (not done: the dev database is not migrated yet and no browser was available)
+**Done:** types (`RoleRef`, `StatusRef`, `CountryRef`), meta lists, people, requests, onboarding, departments and dashboard screens, the new-hire form (managers found by the Manager role's id; the form sends `countryId` and `statusId`), `StatusBadge` shows the status name; new `tests/people-page.test.tsx`.
 **Dependencies:** T32
 **Files:** `frontend/lib/types.ts`, `frontend/lib/hooks/*`, `frontend/app/**`, `frontend/components/**`, `frontend/tests/*`
 **Scope:** L
+
+### Task 36: Role on the Add new hire form (your request)
+**Description:** `POST /users` takes an optional `roleId` (default Employee); one Manager per department; a new Manager becomes the listed head of a department that has none. The form has a Role field.
+**Acceptance criteria:**
+- [x] Employee by default; Employee, Manager and HR Admin can be chosen; unknown or non-id `roleId` is a 422 naming `roleId`; a second Manager in a department is a 422
+- [x] Backend 673 and frontend 146 tests pass
+- [ ] Manual in the browser
+**Files:** `backend/src/services/users.ts`, `backend/tests/users-create.test.ts`, `frontend/app/(app)/people/new/page.tsx`, `frontend/lib/hooks/onboarding.ts`, `frontend/tests/forms.test.tsx`
+**Scope:** S
 
 ### Task 35: Docs
 **Description:** Update `docs/architecture-v1.md` (data model and API) and the README.

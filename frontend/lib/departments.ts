@@ -1,4 +1,4 @@
-import type { Role, UserStatus } from "./types";
+import type { CountryRef, RoleRef, StatusRef } from "./types";
 
 export interface DepartmentRow {
   id: string;
@@ -6,9 +6,9 @@ export interface DepartmentRow {
   name: string;
   head: { id: string; fullName: string } | null;
   headcount: number;
-  byCountry: { country: string; count: number }[];
-  byStatus: { status: UserStatus; count: number }[];
-  byRole: { role: Role; count: number }[];
+  byCountry: { country: CountryRef; count: number }[];
+  byStatus: { status: StatusRef; count: number }[];
+  byRole: { role: RoleRef; count: number }[];
 }
 
 export interface DepartmentBreakdown {
@@ -22,8 +22,8 @@ export const sharePercent = (count: number, total: number) => (total === 0 ? 0 :
 /** "2 on probation · 1 on notice": only the non-zero, non-default statuses; "—" when there are none. */
 export function statusSentence(byStatus: DepartmentRow["byStatus"]): string {
   const parts = byStatus
-    .filter((s) => s.status !== "ACTIVE" && s.count > 0)
-    .map((s) => `${s.count} ${s.status === "ON_PROBATION" ? "on probation" : "on notice"}`);
+    .filter((s) => s.status.code !== "ACTIVE" && s.count > 0)
+    .map((s) => `${s.count} ${s.status.code === "ON_PROBATION" ? "on probation" : "on notice"}`);
   return parts.length ? parts.join(" · ") : "—";
 }
 
@@ -31,7 +31,7 @@ export function statusSentence(byStatus: DepartmentRow["byStatus"]): string {
 export function roleSentence(byRole: DepartmentRow["byRole"]): string {
   const label = { MANAGER: ["manager", "managers"], HR_ADMIN: ["HR admin", "HR admins"] } as const;
   const parts = byRole
-    .filter((r) => r.role !== "EMPLOYEE" && r.count > 0)
-    .map((r) => `${r.count} ${label[r.role as "MANAGER" | "HR_ADMIN"][r.count === 1 ? 0 : 1]}`);
+    .filter((r) => r.role.code !== "EMPLOYEE" && r.count > 0)
+    .map((r) => `${r.count} ${label[r.role.code as "MANAGER" | "HR_ADMIN"][r.count === 1 ? 0 : 1]}`);
   return parts.length ? parts.join(" · ") : "—";
 }

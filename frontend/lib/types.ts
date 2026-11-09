@@ -1,16 +1,23 @@
+/** The role's `code`. Behaviour (navigation, permissions in the UI) compares on this, never on an id. */
 export type Role = "EMPLOYEE" | "MANAGER" | "HR_ADMIN";
+export type UserStatus = "ACTIVE" | "ON_PROBATION" | "ON_NOTICE";
+
+/** The role, country and status of a person are rows of lookup tables; the API sends each as an object with its id and display name. */
+export interface RoleRef { id: string; code: Role; name: string }
+export interface StatusRef { id: string; code: UserStatus; name: string }
+export interface CountryRef { id: string; shortcode: string; name: string }
 
 export interface User {
   id: string;
   employeeCode: string;
   fullName: string;
   email: string;
-  role: Role;
-  country: string;
+  role: RoleRef;
+  country: CountryRef;
   department: { id: string; code: string; name: string };
   managerId: string | null;
   jobTitle: string;
-  status: string;
+  status: StatusRef;
   joiningDate: string;
 }
 
@@ -20,20 +27,12 @@ export interface MeResponse {
   headOfDepartmentId: string | null;
 }
 
-export const ROLE_LABEL: Record<Role, string> = {
-  EMPLOYEE: "Employee",
-  MANAGER: "Manager",
-  HR_ADMIN: "HR Admin",
-};
-
 export interface Paginated<T> {
   data: T[];
   page: number;
   pageSize: number;
   total: number;
 }
-
-export type UserStatus = "ACTIVE" | "ON_PROBATION" | "ON_NOTICE";
 
 export interface Department {
   id: string;
@@ -45,10 +44,11 @@ export interface Department {
 export interface Meta {
   departments: Department[];
   requestCategories: { id: string; code: string; name: string; handlingDepartmentId: string }[];
+  /** The three lookup lists, with the ids that filters and forms send. Roles and statuses in natural order, countries by name. */
+  roles: RoleRef[];
+  countries: CountryRef[];
+  userStatuses: StatusRef[];
   enums: {
-    roles: Role[];
-    countries: string[];
-    userStatuses: UserStatus[];
     requestPriorities: string[];
     requestStatuses: string[];
     ownerTypes: string[];
@@ -72,7 +72,7 @@ export interface RequestSummary {
   updatedAt: string;
   category: { id: string; code: string; name: string };
   handlingDepartment: { id: string; code: string; name: string };
-  requester: { id: string; fullName: string; country: string };
+  requester: { id: string; fullName: string; country: CountryRef };
   assignee: { id: string; fullName: string } | null;
 }
 
@@ -165,7 +165,7 @@ export interface InstanceHeader {
     id: string;
     fullName: string;
     email: string;
-    country: string;
+    country: CountryRef;
     jobTitle: string;
     managerId: string | null;
     department: { id: string; code: string; name: string };
@@ -179,7 +179,7 @@ export interface InstanceDetail extends InstanceHeader {
 }
 
 export interface QueueTask extends OnboardingTask {
-  employee: { id: string; fullName: string; country: string };
+  employee: { id: string; fullName: string; country: CountryRef };
 }
 
 export interface TemplateSummary {

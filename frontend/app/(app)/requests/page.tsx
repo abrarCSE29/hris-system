@@ -20,17 +20,17 @@ const PAGE_SIZE = 20;
 export default function RequestsPage() {
   const me = useMe();
   const meta = useMeta();
-  const isHr = me.data?.user.role === "HR_ADMIN";
+  const isHr = me.data?.user.role.code === "HR_ADMIN";
 
   const [status, setStatus] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [priority, setPriority] = useState("");
-  const [country, setCountry] = useState("");
+  const [countryId, setCountryId] = useState("");
   const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [status, categoryId, priority, country]);
+  useEffect(() => setPage(1), [status, categoryId, priority, countryId]);
 
-  const requests = useRequests({ status, categoryId, priority, country, page, pageSize: PAGE_SIZE });
-  const filtered = Boolean(status || categoryId || priority || country);
+  const requests = useRequests({ status, categoryId, priority, countryId, page, pageSize: PAGE_SIZE });
+  const filtered = Boolean(status || categoryId || priority || countryId);
 
   return (
     <div className="space-y-6">
@@ -68,9 +68,9 @@ export default function RequestsPage() {
         {isHr && (
           <FilterSelect
             label="All countries"
-            value={country}
-            onChange={setCountry}
-            options={(meta.data?.enums.countries ?? []).map((c) => ({ value: c, label: labelize(c) }))}
+            value={countryId}
+            onChange={setCountryId}
+            options={(meta.data?.countries ?? []).map((c) => ({ value: c.id, label: c.name }))}
           />
         )}
         {filtered && (
@@ -81,7 +81,7 @@ export default function RequestsPage() {
               setStatus("");
               setCategoryId("");
               setPriority("");
-              setCountry("");
+              setCountryId("");
             }}
           >
             Clear filters

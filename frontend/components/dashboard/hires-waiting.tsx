@@ -5,7 +5,6 @@ import { useState } from "react";
 import { SelectField } from "@/components/select-field";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PriorityBadge, RequestStatusBadge } from "@/components/requests/badges";
-import { labelize } from "@/lib/format";
 import type { DashboardSummary } from "@/lib/dashboard";
 
 export function HiresWaiting({ waiting }: { waiting: DashboardSummary["newHiresWaiting"] }) {
@@ -47,7 +46,7 @@ export function HiresWaiting({ waiting }: { waiting: DashboardSummary["newHiresW
                       {h.fullName}
                     </Link>
                     <span className="text-xs text-muted-foreground">
-                      {h.department.name} · {labelize(h.country)}
+                      {h.department.name} · {h.country.name}
                     </span>
                   </div>
                   <ul className="space-y-1.5">

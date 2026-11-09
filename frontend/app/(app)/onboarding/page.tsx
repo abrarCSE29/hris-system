@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDate, labelize } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { useMe } from "@/lib/hooks/auth";
 import { useInstances } from "@/lib/hooks/onboarding";
 import { useMeta } from "@/lib/hooks/users";
@@ -21,13 +21,13 @@ const PAGE_SIZE = 20;
 export default function OnboardingOverviewPage() {
   const me = useMe();
   const meta = useMeta();
-  const isHr = me.data?.user.role === "HR_ADMIN";
-  const [country, setCountry] = useState("");
+  const isHr = me.data?.user.role.code === "HR_ADMIN";
+  const [countryId, setCountryId] = useState("");
   const [status, setStatus] = useState("ACTIVE");
   const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [country, status]);
+  useEffect(() => setPage(1), [countryId, status]);
 
-  const q = useInstances({ country, status, page, pageSize: PAGE_SIZE });
+  const q = useInstances({ countryId, status, page, pageSize: PAGE_SIZE });
 
   return (
     <div className="space-y-6">
@@ -53,9 +53,9 @@ export default function OnboardingOverviewPage() {
       <div className="flex flex-wrap items-center gap-2">
         <FilterSelect
           label="All countries"
-          value={country}
-          onChange={setCountry}
-          options={(meta.data?.enums.countries ?? []).map((c) => ({ value: c, label: labelize(c) }))}
+          value={countryId}
+          onChange={setCountryId}
+          options={(meta.data?.countries ?? []).map((c) => ({ value: c.id, label: c.name }))}
         />
         <FilterSelect
           label="Active and completed"
@@ -100,7 +100,7 @@ export default function OnboardingOverviewPage() {
                       {i.employee.fullName}
                     </Link>
                     <div className="text-xs text-muted-foreground">
-                      {i.employee.jobTitle} · {labelize(i.employee.country)}
+                      {i.employee.jobTitle} · {i.employee.country.name}
                     </div>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">{i.employee.department.name}</TableCell>

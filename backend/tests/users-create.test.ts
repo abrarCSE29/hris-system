@@ -4,7 +4,7 @@ import { POST as login } from "../app/api/v1/auth/login/route";
 import { GET as getUsers, POST as createUser } from "../app/api/v1/users/route";
 import { clearAll, seedBase } from "../prisma/seed/base";
 import { SESSION_COOKIE, signSession } from "@/lib/auth";
-import { countryId, db, statusId } from "./db";
+import { countryId, db, roleId, statusId } from "./db";
 
 let ids: Awaited<ReturnType<typeof seedBase>>;
 let deptId: string;
@@ -152,7 +152,51 @@ describe("POST /users", () => {
     expect(ghost.status).toBe(422);
   });
 
-  it("rejects unknown fields, so a role cannot be smuggled in", async () => {
+  describe("role", () => {
+    it("defaults to Employee, and HR can choose Employee or HR Admin explicitly", async () => {
+      const def = await json(await post(hr(), body({ email: "role.default@hris.test" })));
+      expect(def.user.role.code).toBe("EMPLOYEE");
+      const emp = await json(await post(hr(), body({ email: "role.emp@hris.test", roleId: await roleId("EMPLOYEE") })));
+      expect(emp.user.role).toMatchObject({ code: "EMPLOYEE", name: "Employee" });
+      const admin = await post(hr(), body({ email: "role.admin@hris.test", roleId: await roleId("HR_ADMIN") }));
+      expect(admin.status).toBe(201);
+      expect((await json(admin)).user.role).toMatchObject({ code: "HR_ADMIN", name: "HR Admin" });
+      expect((await db.user.findUniqueOrThrow({ where: { email: "role.admin@hris.test" }, include: { role: true } })).role.code).toBe("HR_ADMIN");
+    });
+
+    it("makes a Manager the listed head of a department that has none, and allows only one Manager per department", async () => {
+      const empty = await db.department.create({ data: { code: "NEWDEPT", name: "New Department" } });
+      const first = await post(hr(), body({ email: "mgr.one@hris.test", departmentId: empty.id, roleId: await roleId("MANAGER") }));
+      expect(first.status).toBe(201);
+      const created = (await json(first)).user;
+      expect(created.role.code).toBe("MANAGER");
+      expect((await db.department.findUniqueOrThrow({ where: { id: empty.id } })).headId).toBe(created.id);
+
+      const second = await post(hr(), body({ email: "mgr.two@hris.test", departmentId: empty.id, roleId: await roleId("MANAGER") }));
+      expect(second.status).toBe(422);
+      expect((await json(second)).error.details[0].path).toBe("roleId");
+      expect(await db.user.count({ where: { email: "mgr.two@hris.test" } })).toBe(0);
+      // A seeded department already has its Manager.
+      const eng = await post(hr(), body({ email: "mgr.eng@hris.test", roleId: await roleId("MANAGER") }));
+      expect(eng.status).toBe(422);
+    });
+
+    it("does not change the listed head when a non-Manager joins", async () => {
+      const before = (await db.department.findUniqueOrThrow({ where: { id: deptId } })).headId;
+      await post(hr(), body({ email: "role.nohead@hris.test", roleId: await roleId("HR_ADMIN") }));
+      expect((await db.department.findUniqueOrThrow({ where: { id: deptId } })).headId).toBe(before);
+    });
+
+    it("returns 422 naming roleId for a role that does not exist or is not an id", async () => {
+      const ghost = await post(hr(), body({ email: "role.ghost@hris.test", roleId: crypto.randomUUID() }));
+      expect(ghost.status).toBe(422);
+      expect((await json(ghost)).error.details[0].path).toBe("roleId");
+      expect((await post(hr(), body({ email: "role.bad@hris.test", roleId: "MANAGER" }))).status).toBe(422);
+      expect(await db.user.count({ where: { email: { in: ["role.ghost@hris.test", "role.bad@hris.test"] } } })).toBe(0);
+    });
+  });
+
+  it("rejects the old role field, which is not an id", async () => {
     const res = await post(hr(), body({ email: "sneaky@hris.test", role: "HR_ADMIN" }));
     expect(res.status).toBe(422);
     expect(await db.user.count({ where: { email: "sneaky@hris.test" } })).toBe(0);
