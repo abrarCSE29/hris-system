@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { RequestStatus } from "@/generated/prisma/client";
 import type { AuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { addDays, isBlocked, isOverdue, todayInDhaka, toIsoDate } from "./onboarding-logic";
+import { addDays, isBlocked, isOverdue, summarize, todayInDhaka, toIsoDate } from "./onboarding-logic";
 
 /**
  * Manager dashboard (spec docs/spec-manager-dashboard.md). Computed live from the tables, never stored.
@@ -38,7 +38,7 @@ export async function getTeamDashboard(manager: AuthUser, days: Period = 30, tod
   const until = dhakaMidnight(addDays(today, 1)); // end of today, exclusive
 
   // Every query below is limited to the team's own ids; with no team there is nothing to ask.
-  const [openRows, resolvedEvents, openTasks, completedTasks] = ids.length === 0 ? [[], [], [], []] : await Promise.all([
+  const [openRows, resolvedEvents, openTasks, completedTasks, activeChecklists] = ids.length === 0 ? [[], [], [], [], []] : await Promise.all([
     prisma.serviceRequest.groupBy({ by: ["assigneeId"], where: { assigneeId: { in: ids }, status: { in: OPEN_STATUSES } }, _count: true }),
     // A request is resolved once (Resolved only moves on to Closed), so one RESOLVED event per request.
     prisma.requestEvent.findMany({
@@ -53,6 +53,15 @@ export async function getTeamDashboard(manager: AuthUser, days: Period = 30, tod
     prisma.onboardingTask.findMany({
       where: { assigneeId: { in: ids }, status: "COMPLETED", completedAt: { gte: from, lt: until } },
       select: { assigneeId: true, dueDate: true, completedAt: true },
+    }),
+    // The team's own new hires: direct reports with an ACTIVE checklist, whoever the tasks are assigned to.
+    prisma.onboardingInstance.findMany({
+      where: { status: "ACTIVE", employeeId: { in: ids } },
+      select: {
+        id: true,
+        employee: { select: { id: true, fullName: true, country: { select: { id: true, shortcode: true, name: true } } } },
+        tasks: { select: { status: true, dueDate: true, dependsOn: { select: { status: true } } } },
+      },
     }),
   ]);
 
@@ -106,7 +115,13 @@ export async function getTeamDashboard(manager: AuthUser, days: Period = 30, tod
       completedOnTime: people.reduce((n, p) => n + p.tasksCompletedOnTime, 0),
       completedLate: people.reduce((n, p) => n + p.tasksCompletedLate, 0),
     },
-    newHires: [] as { employee: { id: string; fullName: string }; instanceId: string; percentComplete: number; overdue: number; blocked: number }[],
+    newHires: activeChecklists
+      .map((i) => {
+        const progress = summarize(i.tasks.map((t) => ({ status: t.status, dependsOnStatus: t.dependsOn?.status ?? null, dueDate: toIsoDate(t.dueDate) })), today);
+        return { employee: i.employee, instanceId: i.id, percentComplete: progress.percentComplete, overdue: progress.overdue, blocked: progress.blocked };
+      })
+      // Same order as the people list (the database's name order), so the two never disagree.
+      .sort((a, b) => ids.indexOf(a.employee.id) - ids.indexOf(b.employee.id)),
     people,
   };
 }

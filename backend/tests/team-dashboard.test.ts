@@ -2,9 +2,12 @@ import bcrypt from "bcryptjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GET as teamRoute } from "../app/api/v1/dashboard/team/route";
 import { clearAll, seedBase } from "../prisma/seed/base";
-import { SESSION_COOKIE, signSession } from "@/lib/auth";
+import { seedOnboarding } from "../prisma/seed/onboarding";
+import { seedRequests } from "../prisma/seed/requests";
+import { loadAuthUser, SESSION_COOKIE, signSession } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
 import { addDays, todayInDhaka } from "@/services/onboarding-logic";
+import { getInstanceDetail } from "@/services/onboarding";
 import { getTeamDashboard } from "@/services/team-dashboard";
 import { db } from "./db";
 
@@ -348,5 +351,155 @@ describe("team dashboard: onboarding tasks", () => {
     expect(sum((p) => p.overdueTasks)).toBe(d.tasks.overdue);
     expect(sum((p) => p.tasksCompletedOnTime)).toBe(d.tasks.completedOnTime);
     expect(sum((p) => p.tasksCompletedLate)).toBe(d.tasks.completedLate);
+  });
+});
+
+// ═════════════════════════════════ Task 45: the team's new hires ═══════════════════
+
+describe("team dashboard: new hires", () => {
+  const TODAY = "2026-06-15";
+  let A: string, B: string, C: string, outsider: string, templateId: string, departmentId: string;
+  let reportCount = 0;
+  const manager = () => ({ id: base.personas.manager }) as AuthUser;
+  const dash = (days: 7 | 30 | 90 = 30, who = manager()) => getTeamDashboard(who, days, TODAY);
+  let order = 0;
+
+  async function instance(employeeId: string, status: "ACTIVE" | "COMPLETED", tasks: { due: string; status?: "NOT_STARTED" | "COMPLETED"; dependsOnIndex?: number }[]) {
+    const inst = await db.onboardingInstance.create({ data: { employeeId, templateId, startDate: new Date("2026-06-01T00:00:00Z"), status } });
+    const ids: string[] = [];
+    for (const t of tasks) {
+      const row = await db.onboardingTask.create({
+        data: {
+          instanceId: inst.id, title: `n${++order}`, description: "", ownerType: "DEPARTMENT", ownerDepartmentId: departmentId, dueDate: new Date(`${t.due}T00:00:00Z`),
+          status: t.status ?? "NOT_STARTED", dependsOnId: t.dependsOnIndex === undefined ? null : ids[t.dependsOnIndex], sortOrder: order,
+          completedAt: t.status === "COMPLETED" ? new Date("2026-06-05T00:00:00Z") : null,
+        },
+      });
+      ids.push(row.id);
+    }
+    return inst.id;
+  }
+
+  let instA: string;
+  beforeAll(async () => {
+    const reports = await db.user.findMany({ where: { managerId: base.personas.manager }, orderBy: { fullName: "asc" } });
+    reportCount = reports.length;
+    [A, B, C] = [reports[0].id, reports[1].id, reports[2].id];
+    outsider = (await db.user.findFirstOrThrow({ where: { managerId: otherManager } })).id;
+    departmentId = (await db.department.findFirstOrThrow()).id;
+    await db.onboardingTask.deleteMany();
+    await db.onboardingInstance.deleteMany();
+    templateId = (await db.onboardingTemplate.findFirstOrThrow()).id;
+
+    // A: five tasks, two done, two overdue, one waiting on an overdue one → 40 %, overdue 2, blocked 1 (different numbers, so a mix-up shows).
+    instA = await instance(A, "ACTIVE", [
+      { due: "2026-06-05", status: "COMPLETED" },
+      { due: "2026-06-10", status: "COMPLETED" },
+      { due: "2026-06-14" },
+      { due: "2026-06-20", dependsOnIndex: 2 },
+      { due: "2026-06-12" },
+    ]);
+    // B finished their checklist: not an active new hire. C has an active one with nothing done and nothing late.
+    await instance(B, "COMPLETED", [{ due: "2026-06-05", status: "COMPLETED" }]);
+    await instance(C, "ACTIVE", [{ due: "2026-06-30" }]);
+    // Not this team: another manager's report, and the manager themself.
+    await instance(outsider, "ACTIVE", [{ due: "2026-06-01" }]);
+    await instance(base.personas.manager, "ACTIVE", [{ due: "2026-06-01" }]);
+  });
+
+  it("lists the manager's direct reports with an active checklist, in name order, and nobody else", async () => {
+    expect(reportCount).toBeGreaterThanOrEqual(3);
+    const d = await dash();
+    expect(d.newHires.map((h) => h.employee.id)).toEqual([A, C].sort((x, y) => (d.people.findIndex((p) => p.id === x) - d.people.findIndex((p) => p.id === y))));
+    const ids = d.newHires.map((h) => h.employee.id);
+    expect(ids).not.toContain(B); // finished
+    expect(ids).not.toContain(outsider);
+    expect(ids).not.toContain(base.personas.manager);
+  });
+
+  it("shows each hire's progress, from the checklist's own tasks", async () => {
+    const d = await dash();
+    expect(d.newHires.find((h) => h.employee.id === A)).toMatchObject({ instanceId: instA, percentComplete: 40, overdue: 2, blocked: 1 });
+    expect(d.newHires.find((h) => h.employee.id === C)).toMatchObject({ percentComplete: 0, overdue: 0, blocked: 0 });
+  });
+
+  it("agrees with the checklist page's own progress summary", async () => {
+    const hr = (await loadAuthUser(base.personas.hrAdmin))!;
+    const d = await dash();
+    for (const h of d.newHires) {
+      const { progress } = await getInstanceDetail(hr, h.instanceId, TODAY);
+      expect(h).toMatchObject({ percentComplete: progress.percentComplete, overdue: progress.overdue, blocked: progress.blocked });
+    }
+  });
+
+  it("names the person and their country, nothing more", async () => {
+    const hire = (await dash()).newHires.find((h) => h.employee.id === A)!;
+    expect(Object.keys(hire).sort()).toEqual(["blocked", "employee", "instanceId", "overdue", "percentComplete"]);
+    expect(Object.keys(hire.employee).sort()).toEqual(["country", "fullName", "id"]);
+    expect(Object.keys(hire.employee.country).sort()).toEqual(["id", "name", "shortcode"]);
+  });
+
+  it("does not depend on the period", async () => {
+    const base30 = (await dash(30)).newHires;
+    expect((await dash(7)).newHires).toEqual(base30);
+    expect((await dash(90)).newHires).toEqual(base30);
+  });
+
+  it("is empty for a manager with no reports, and for another manager shows only their own", async () => {
+    expect((await dash(30, { id: lonelyManager } as AuthUser)).newHires).toEqual([]);
+    expect((await dash(30, { id: otherManager } as AuthUser)).newHires.map((h) => h.employee.id)).toEqual([outsider]);
+  });
+});
+
+describe("team dashboard: a busy, seeded company", () => {
+  beforeAll(async () => {
+    await clearAll(db);
+    base = await seedBase(db, await bcrypt.hash("x", 4));
+    await seedRequests(db, base);
+    await seedOnboarding(db, base);
+  });
+
+  it("keeps every total equal to the sum of its people rows, for every manager and period", async () => {
+    const managers = await db.user.findMany({ where: { role: { code: "MANAGER" } }, select: { id: true } });
+    expect(managers.length).toBeGreaterThan(3);
+    for (const m of managers) {
+      for (const days of [7, 30, 90] as const) {
+        const d = await getTeamDashboard({ id: m.id } as AuthUser, days);
+        const sum = (f: (p: (typeof d.people)[number]) => number) => d.people.reduce((n, p) => n + f(p), 0);
+        expect(sum((p) => p.openRequests), `${m.id} ${days}`).toBe(d.requests.open);
+        expect(sum((p) => p.resolvedInPeriod)).toBe(d.requests.resolvedInPeriod);
+        expect(sum((p) => p.openTasks)).toBe(d.tasks.open);
+        expect(sum((p) => p.overdueTasks)).toBe(d.tasks.overdue);
+        expect(sum((p) => p.tasksCompletedOnTime)).toBe(d.tasks.completedOnTime);
+        expect(sum((p) => p.tasksCompletedLate)).toBe(d.tasks.completedLate);
+        expect(d.teamSize).toBe(d.people.length);
+      }
+    }
+  });
+
+  it("shows the persona manager real numbers on the seeded data", async () => {
+    const d = await getTeamDashboard({ id: base.personas.manager } as AuthUser, 90);
+    expect(d.teamSize).toBeGreaterThan(1);
+    expect(d.newHires.length).toBeGreaterThanOrEqual(1); // the persona hire reports to them
+    expect(d.tasks.open + d.tasks.completedOnTime + d.tasks.completedLate + d.requests.open + d.requests.resolvedInPeriod).toBeGreaterThan(0);
+  });
+
+  it("never contains request or task text, comments, e-mail addresses or anyone outside the team", async () => {
+    const texts = [
+      ...(await db.serviceRequest.findMany({ select: { title: true, description: true } })).flatMap((r) => [r.title, r.description]),
+      ...(await db.requestComment.findMany({ select: { body: true } })).map((c) => c.body),
+      ...(await db.onboardingTask.findMany({ select: { title: true, description: true } })).flatMap((t) => [t.title, t.description]),
+    ].filter((t) => t.length > 12);
+    expect(texts.length).toBeGreaterThan(20);
+    const managers = await db.user.findMany({ where: { role: { code: "MANAGER" } }, select: { id: true } });
+    for (const m of managers) {
+      const d = await getTeamDashboard({ id: m.id } as AuthUser, 90);
+      const json = JSON.stringify(d);
+      for (const t of texts) expect(json.includes(t), t.slice(0, 40)).toBe(false);
+      expect(json).not.toMatch(/@hris\.test/);
+      const team = new Set((await db.user.findMany({ where: { managerId: m.id }, select: { id: true } })).map((u) => u.id));
+      const everyone = await db.user.findMany({ select: { id: true, fullName: true } });
+      for (const u of everyone) if (!team.has(u.id)) expect(json.includes(u.id) && !d.newHires.some((h) => h.employee.id === u.id), u.id).toBe(false);
+    }
   });
 });
