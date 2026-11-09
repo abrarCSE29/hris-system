@@ -209,26 +209,31 @@ describe("allowedActions", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Onboarding tasks (spec §6.2)
 // ─────────────────────────────────────────────────────────────────────────────
-import { allowedTaskActions, checkTaskTransition, isTaskOwner, type TaskAction, type TaskActor, type TaskState } from "@/services/state-machine";
+import {
+  allowedTaskActions, checkTaskAssign, checkTaskTransition, isTaskOwner,
+  type TaskAction, type TaskActor, type TaskAssignee, type TaskState,
+} from "@/services/state-machine";
 import type { OnboardingTaskStatus } from "@/generated/prisma/client";
 
 describe("onboarding task state machine", () => {
   const IT = "dept-it";
   const PEOPLE = "dept-people";
   const TASK_ACTORS = {
-    itMember: { id: "it1", role: "EMPLOYEE", departmentId: IT },
-    peopleMember: { id: "p1", role: "EMPLOYEE", departmentId: PEOPLE },
-    hiresManager: { id: "mgr", role: "MANAGER", departmentId: PEOPLE },
-    otherManager: { id: "mgr2", role: "MANAGER", departmentId: "dept-ops" },
-    hr: { id: "hr", role: "HR_ADMIN", departmentId: PEOPLE },
-    theHire: { id: "hire", role: "EMPLOYEE", departmentId: IT },
+    itHead: { id: "ithead", role: "MANAGER", departmentId: IT, headOfDepartmentId: IT },
+    itMember: { id: "it1", role: "EMPLOYEE", departmentId: IT, headOfDepartmentId: null }, // the assignee in the "assigned" cases
+    itOther: { id: "it2", role: "EMPLOYEE", departmentId: IT, headOfDepartmentId: null },
+    peopleMember: { id: "p1", role: "EMPLOYEE", departmentId: PEOPLE, headOfDepartmentId: null },
+    peopleHead: { id: "peoplehead", role: "MANAGER", departmentId: PEOPLE, headOfDepartmentId: PEOPLE },
+    hiresManager: { id: "mgr", role: "MANAGER", departmentId: PEOPLE, headOfDepartmentId: null },
+    otherManager: { id: "mgr2", role: "MANAGER", departmentId: "dept-ops", headOfDepartmentId: null },
+    hr: { id: "hr", role: "HR_ADMIN", departmentId: PEOPLE, headOfDepartmentId: null },
   } satisfies Record<string, TaskActor>;
   type Who = keyof typeof TASK_ACTORS;
   const TASK_STATUSES: OnboardingTaskStatus[] = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"];
   const TASK_ACTIONS: TaskAction[] = ["start", "complete"];
 
-  const deptTask = (status: OnboardingTaskStatus, blocked = false): TaskState => ({
-    status, blocked, waitingFor: blocked ? "Create accounts" : null, ownerType: "DEPARTMENT", ownerDepartmentId: IT, assigneeId: null,
+  const deptTask = (status: OnboardingTaskStatus, blocked = false, assigneeId: string | null = null): TaskState => ({
+    status, blocked, waitingFor: blocked ? "Create accounts" : null, ownerType: "DEPARTMENT", ownerDepartmentId: IT, assigneeId,
   });
   const managerTask = (status: OnboardingTaskStatus, blocked = false): TaskState => ({
     status, blocked, waitingFor: blocked ? "Create accounts" : null, ownerType: "MANAGER", ownerDepartmentId: null, assigneeId: "mgr",
@@ -236,19 +241,23 @@ describe("onboarding task state machine", () => {
 
   // Oracle written as plain tables.
   const STATE_OK: Record<TaskAction, OnboardingTaskStatus[]> = { start: ["NOT_STARTED"], complete: ["NOT_STARTED", "IN_PROGRESS"] };
-  // No HR override: HR is in People & Culture here, so they own People tasks but not IT or manager tasks.
-  const DEPT_OWNERS: Who[] = ["itMember", "theHire"]; // theHire happens to be in IT: department membership is what counts
-  const MANAGER_OWNERS: Who[] = ["hiresManager"];
   const TARGET: Record<TaskAction, OnboardingTaskStatus> = { start: "IN_PROGRESS", complete: "COMPLETED" };
+  // Department task: the head of the owning department, and whoever the head assigned it to. Nobody else, HR included
+  // (HR is in People & Culture here, and even an HR Admin who heads or is assigned would act as that person, not as HR).
+  const CASES = [
+    ["unassigned department task", (s: OnboardingTaskStatus, b: boolean) => deptTask(s, b), ["itHead"]],
+    ["assigned department task", (s: OnboardingTaskStatus, b: boolean) => deptTask(s, b, "it1"), ["itHead", "itMember"]],
+    ["manager task", managerTask, ["hiresManager"]],
+  ] as const;
 
-  for (const [label, make, owners] of [["department task", deptTask, DEPT_OWNERS], ["manager task", managerTask, MANAGER_OWNERS]] as const) {
+  for (const [label, make, owners] of CASES) {
     describe(label, () => {
       for (const action of TASK_ACTIONS) {
         for (const status of TASK_STATUSES) {
           for (const blocked of [false, true]) {
             for (const [who, actor] of Object.entries(TASK_ACTORS) as [Who, TaskActor][]) {
               const stateOk = STATE_OK[action].includes(status);
-              const ownerOk = owners.includes(who);
+              const ownerOk = (owners as readonly string[]).includes(who);
               const expected = !stateOk ? "invalid_state" : !ownerOk ? "not_permitted" : blocked ? "blocked" : "ok";
               it(`${action} ${status}${blocked ? " (blocked)" : ""} by ${who} → ${expected}`, () => {
                 const r = checkTaskTransition(action, make(status, blocked), actor);
@@ -263,47 +272,106 @@ describe("onboarding task state machine", () => {
   }
 
   it("names the task a blocked task is waiting for", () => {
-    const r = checkTaskTransition("start", deptTask("NOT_STARTED", true), TASK_ACTORS.itMember);
+    const r = checkTaskTransition("start", deptTask("NOT_STARTED", true), TASK_ACTORS.itHead);
     expect(r).toMatchObject({ ok: false, reason: "blocked", message: expect.stringContaining("Create accounts") });
   });
 
   it("does not reveal blocking to people who couldn't act anyway", () => {
-    expect(checkTaskTransition("start", deptTask("NOT_STARTED", true), TASK_ACTORS.peopleMember)).toMatchObject({ reason: "not_permitted" });
+    expect(checkTaskTransition("start", deptTask("NOT_STARTED", true), TASK_ACTORS.itOther)).toMatchObject({ reason: "not_permitted" });
   });
 
-  it("a completed task offers nothing, to anyone", () => {
+  it("a completed task offers nothing to start or complete, to anyone", () => {
     for (const actor of Object.values(TASK_ACTORS)) {
-      expect(allowedTaskActions(deptTask("COMPLETED"), actor)).toEqual([]);
-      expect(allowedTaskActions(managerTask("COMPLETED"), actor)).toEqual([]);
+      for (const t of [deptTask("COMPLETED"), deptTask("COMPLETED", false, "it1"), managerTask("COMPLETED")]) {
+        expect(allowedTaskActions(t, actor)).toEqual([]);
+      }
     }
   });
 
-  it("allowedTaskActions offers start+complete, then only complete, and nothing while blocked", () => {
-    expect(allowedTaskActions(deptTask("NOT_STARTED"), TASK_ACTORS.itMember)).toEqual(["start", "complete"]);
-    expect(allowedTaskActions(deptTask("IN_PROGRESS"), TASK_ACTORS.itMember)).toEqual(["complete"]);
-    expect(allowedTaskActions(deptTask("NOT_STARTED", true), TASK_ACTORS.itMember)).toEqual([]);
-    expect(allowedTaskActions(deptTask("NOT_STARTED"), TASK_ACTORS.peopleMember)).toEqual([]);
+  it("allowedTaskActions: the head can work and assign; the assignee can only work; others get nothing", () => {
+    expect(allowedTaskActions(deptTask("NOT_STARTED"), TASK_ACTORS.itHead)).toEqual(["start", "complete", "assign"]);
+    expect(allowedTaskActions(deptTask("IN_PROGRESS", false, "it1"), TASK_ACTORS.itHead)).toEqual(["complete", "assign"]);
+    expect(allowedTaskActions(deptTask("NOT_STARTED", false, "it1"), TASK_ACTORS.itMember)).toEqual(["start", "complete"]);
+    expect(allowedTaskActions(deptTask("IN_PROGRESS", false, "it1"), TASK_ACTORS.itMember)).toEqual(["complete"]);
+    expect(allowedTaskActions(deptTask("NOT_STARTED", true), TASK_ACTORS.itHead)).toEqual(["assign"]); // blocked: can't work, can still assign
+    expect(allowedTaskActions(deptTask("NOT_STARTED"), TASK_ACTORS.itOther)).toEqual([]);
+    expect(allowedTaskActions(deptTask("NOT_STARTED"), TASK_ACTORS.peopleHead)).toEqual([]);
+    expect(allowedTaskActions(deptTask("NOT_STARTED", false, "it1"), TASK_ACTORS.itOther)).toEqual([]);
   });
 
-  it("task ownership: department members, the assigned manager, and HR", () => {
-    expect(isTaskOwner(deptTask("NOT_STARTED"), TASK_ACTORS.itMember)).toBe(true);
-    expect(isTaskOwner(deptTask("NOT_STARTED"), TASK_ACTORS.hiresManager)).toBe(false);
+  it("HR Admin can assign a department task but never works it, and has no actions on a manager task", () => {
+    expect(allowedTaskActions(deptTask("NOT_STARTED"), TASK_ACTORS.hr)).toEqual(["assign"]);
+    expect(allowedTaskActions(deptTask("NOT_STARTED", false, "it1"), TASK_ACTORS.hr)).toEqual(["assign"]);
+    expect(allowedTaskActions(managerTask("NOT_STARTED"), TASK_ACTORS.hr)).toEqual([]);
+  });
+
+  it("manager tasks are not assignable by anyone, the hire's manager included", () => {
+    for (const actor of Object.values(TASK_ACTORS)) expect(allowedTaskActions(managerTask("NOT_STARTED"), actor)).not.toContain("assign");
+  });
+
+  it("task ownership: the owning department's head, the assignee, and the assigned manager", () => {
+    expect(isTaskOwner(deptTask("NOT_STARTED"), TASK_ACTORS.itHead)).toBe(true);
+    expect(isTaskOwner(deptTask("NOT_STARTED"), TASK_ACTORS.itMember)).toBe(false); // same department, but not assigned
+    expect(isTaskOwner(deptTask("NOT_STARTED", false, "it1"), TASK_ACTORS.itMember)).toBe(true);
+    expect(isTaskOwner(deptTask("NOT_STARTED", false, "it1"), TASK_ACTORS.itOther)).toBe(false);
+    expect(isTaskOwner(deptTask("NOT_STARTED"), TASK_ACTORS.peopleHead)).toBe(false); // head of another department
+    expect(isTaskOwner(deptTask("NOT_STARTED"), TASK_ACTORS.hr)).toBe(false);
     expect(isTaskOwner(managerTask("NOT_STARTED"), TASK_ACTORS.hiresManager)).toBe(true);
     expect(isTaskOwner(managerTask("NOT_STARTED"), TASK_ACTORS.otherManager)).toBe(false);
-    // HR Admin has no override on tasks they don't own…
     expect(isTaskOwner(managerTask("NOT_STARTED"), TASK_ACTORS.hr)).toBe(false);
-    expect(isTaskOwner(deptTask("NOT_STARTED"), TASK_ACTORS.hr)).toBe(false);
   });
 
-  it("…but an HR Admin owns the tasks of the department they work in, like anyone else there", () => {
-    const peopleTask: TaskState = { status: "NOT_STARTED", blocked: false, ownerType: "DEPARTMENT", ownerDepartmentId: PEOPLE, assigneeId: null };
-    expect(isTaskOwner(peopleTask, TASK_ACTORS.hr)).toBe(true);
-    expect(allowedTaskActions(peopleTask, TASK_ACTORS.hr)).toEqual(["start", "complete"]);
-    expect(allowedTaskActions(peopleTask, TASK_ACTORS.itMember)).toEqual([]);
+  it("an HR Admin who is the assigned person owns that task", () => {
+    expect(isTaskOwner({ ...managerTask("NOT_STARTED"), assigneeId: TASK_ACTORS.hr.id }, TASK_ACTORS.hr)).toBe(true);
+    expect(isTaskOwner(deptTask("NOT_STARTED", false, TASK_ACTORS.hr.id), TASK_ACTORS.hr)).toBe(true);
   });
 
-  it("an HR Admin who is the assigned manager owns that manager task", () => {
-    const task: TaskState = { ...managerTask("NOT_STARTED"), assigneeId: TASK_ACTORS.hr.id };
-    expect(isTaskOwner(task, TASK_ACTORS.hr)).toBe(true);
+  describe("assigning", () => {
+    const member = (over: Partial<TaskAssignee> = {}): TaskAssignee => ({ id: "it1", departmentId: IT, status: "ACTIVE", ...over });
+    const assign = (task: TaskState, actor: TaskActor, candidate: TaskAssignee | null = member()) => checkTaskAssign(task, actor, candidate);
+
+    it("the head and HR Admin can assign an unfinished department task to an active member", () => {
+      for (const who of ["itHead", "hr"] as const) {
+        for (const status of ["NOT_STARTED", "IN_PROGRESS"] as const) {
+          expect(assign(deptTask(status), TASK_ACTORS[who])).toMatchObject({ ok: true, assigneeId: "it1" });
+        }
+      }
+    });
+
+    it("nobody else may: members, assignee, another department's head, the hire's manager", () => {
+      for (const who of ["itMember", "itOther", "peopleHead", "peopleMember", "hiresManager", "otherManager"] as const) {
+        expect(assign(deptTask("NOT_STARTED", false, "it1"), TASK_ACTORS[who], member({ id: "it2" }))).toMatchObject({ ok: false, reason: "not_permitted" });
+      }
+    });
+
+    it("a completed task cannot be assigned (409), and neither can a manager task", () => {
+      expect(assign(deptTask("COMPLETED"), TASK_ACTORS.itHead)).toMatchObject({ ok: false, reason: "invalid_state" });
+      expect(assign(managerTask("NOT_STARTED"), TASK_ACTORS.hr, member())).toMatchObject({ ok: false, reason: "invalid_state" });
+    });
+
+    it("the assignee must exist, be in the owning department and be active or on probation", () => {
+      expect(assign(deptTask("NOT_STARTED"), TASK_ACTORS.itHead, null)).toMatchObject({ ok: false, reason: "invalid_assignee" });
+      expect(assign(deptTask("NOT_STARTED"), TASK_ACTORS.itHead, member({ departmentId: PEOPLE }))).toMatchObject({ ok: false, reason: "invalid_assignee" });
+      expect(assign(deptTask("NOT_STARTED"), TASK_ACTORS.itHead, member({ status: "ON_NOTICE" }))).toMatchObject({ ok: false, reason: "invalid_assignee" });
+      expect(assign(deptTask("NOT_STARTED"), TASK_ACTORS.itHead, member({ status: "ON_PROBATION" }))).toMatchObject({ ok: true });
+    });
+
+    it("the head may assign a task to themself", () => {
+      expect(assign(deptTask("NOT_STARTED"), TASK_ACTORS.itHead, member({ id: "ithead" }))).toMatchObject({ ok: true, assigneeId: "ithead" });
+    });
+
+    it("assigning the person who already has it is refused (422)", () => {
+      expect(assign(deptTask("NOT_STARTED", false, "it1"), TASK_ACTORS.itHead)).toMatchObject({ ok: false, reason: "invalid_assignee" });
+      expect(assign(deptTask("IN_PROGRESS", false, "it1"), TASK_ACTORS.itHead)).toMatchObject({ ok: false, reason: "invalid_assignee" });
+    });
+
+    it("handing an In Progress task to someone else sends it back to Not Started; a Not Started one stays", () => {
+      expect(assign(deptTask("IN_PROGRESS", false, "it2"), TASK_ACTORS.itHead)).toMatchObject({ ok: true, to: "NOT_STARTED" });
+      expect(assign(deptTask("NOT_STARTED", false, "it2"), TASK_ACTORS.itHead)).toMatchObject({ ok: true, to: "NOT_STARTED" });
+    });
+
+    it("a blocked task can still be assigned", () => {
+      expect(assign(deptTask("NOT_STARTED", true), TASK_ACTORS.itHead)).toMatchObject({ ok: true });
+    });
   });
 });

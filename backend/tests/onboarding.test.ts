@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as getInstance } from "../app/api/v1/onboarding/instances/[id]/route";
 import { GET as listInstancesRoute, POST as postInstance } from "../app/api/v1/onboarding/instances/route";
 import { GET as getMine } from "../app/api/v1/onboarding/me/route";
+import { POST as postAssign } from "../app/api/v1/onboarding/tasks/[id]/assign/route";
 import { POST as postTransition } from "../app/api/v1/onboarding/tasks/[id]/transitions/route";
 import { GET as listTasksRoute } from "../app/api/v1/onboarding/tasks/route";
 import { POST as postTemplate } from "../app/api/v1/onboarding/templates/route";
@@ -17,6 +18,8 @@ let tplId: string;
 let itMember: string;
 let itMember2: string;
 let peopleMember: string;
+let itHead: string; // Manager who heads IT Operations
+let peopleHead: string;
 let otherManager: string;
 let cyprusId: string;
 let engOutsider: string; // Engineering employee, same department as the hire, not involved
@@ -43,6 +46,8 @@ beforeAll(async () => {
   const eng = await db.department.findUniqueOrThrow({ where: { code: "ENG" } });
   const members = await db.user.findMany({ where: { departmentId: it.id, role: { code: "EMPLOYEE" }, status: { code: "ACTIVE" } }, orderBy: { employeeCode: "asc" } });
   [itMember, itMember2] = [members[0].id, members[1].id];
+  itHead = it.headId!;
+  peopleHead = people.headId!;
   peopleMember = (await db.user.findFirstOrThrow({ where: { departmentId: people.id, role: { code: "EMPLOYEE" } } })).id;
   // A Manager who has nothing to do with the hire, IT tasks or People tasks.
   otherManager = (await db.user.findFirstOrThrow({ where: { role: { code: "MANAGER" }, department: { code: { notIn: ["ENG", "ITOPS", "PEOPLE"] } } } })).id;
@@ -78,6 +83,12 @@ const taskIdByTitle = async (instanceId: string, title: string) =>
   (await db.onboardingTask.findFirstOrThrow({ where: { instanceId, title } })).id;
 const act = async (userId: string | null, taskId: string, action: string) =>
   send(postTransition, userId, { body: { action }, id: taskId });
+/** Who the IT head would hand things to; the tests that are about working a task, not about delegating, start from here. */
+const delegate = async (instanceId: string, to: Record<string, string> = {}) => {
+  const owners: Record<string, string> = { "Create accounts": itMember, "Provision laptop": itMember, "Grant repo access": itMember, "HR paperwork": peopleMember, ...to };
+  for (const [title, userId] of Object.entries(owners)) await db.onboardingTask.updateMany({ where: { instanceId, title }, data: { assigneeId: userId } });
+};
+const giveTask = async (userId: string | null, taskId: string, assigneeId: unknown) => send(postAssign, userId, { body: { assigneeId }, id: taskId });
 const byTitle = (body: any, title: string) => body.tasks.find((t: any) => t.title === title);
 
 // ═════════════════════════════════ Task 13 ═══════════════════════════════════
@@ -267,20 +278,42 @@ describe("GET /onboarding/tasks (queue)", () => {
     json(await send(listTasksRoute, userId, { url: `http://x/api/v1/onboarding/tasks${qs}` }));
   const titles = (q: any) => q.data.map((t: any) => t.title).sort();
 
-  it("shows each person only the tasks they own", async () => {
-    await assign();
-    expect(titles(await queue(itMember))).toEqual(["Create accounts", "Grant repo access", "Provision laptop"]);
-    expect(titles(await queue(itMember2))).toEqual(["Create accounts", "Grant repo access", "Provision laptop"]);
-    expect(titles(await queue(peopleMember))).toEqual(["HR paperwork"]);
-    expect(titles(await queue(ids.personas.manager))).toEqual(["Welcome chat"]);
+  it("shows the head every task of their department, and everyone else only what is assigned to them", async () => {
+    const { body } = await assign();
+    // Nothing is assigned yet: a plain member of IT sees none of IT's tasks, the head sees all of them.
+    expect(titles(await queue(itHead))).toEqual(["Create accounts", "Grant repo access", "Provision laptop"]);
+    expect(titles(await queue(itMember))).toEqual([]);
+    expect(titles(await queue(itMember2))).toEqual([]);
+    expect(titles(await queue(peopleHead))).toEqual(["HR paperwork"]);
+    expect(titles(await queue(peopleMember))).toEqual([]);
+    expect(titles(await queue(ids.personas.manager))).toEqual(["Welcome chat"]); // the hire's manager owns manager tasks
     expect(titles(await queue(otherManager))).toEqual([]);
     expect(titles(await queue(ids.personas.newHire))).toEqual([]);
     expect(titles(await queue(engOutsider))).toEqual([]);
     expect((await queue(ids.personas.hrAdmin)).total).toBe(5);
+
+    // Once the head assigns, the assignee sees it and the other member still doesn't.
+    await delegate(body.id, { "Provision laptop": itMember2 });
+    expect(titles(await queue(itMember))).toEqual(["Create accounts", "Grant repo access"]);
+    expect(titles(await queue(itMember2))).toEqual(["Provision laptop"]);
+    expect(titles(await queue(itHead))).toEqual(["Create accounts", "Grant repo access", "Provision laptop"]);
+    expect(titles(await queue(peopleMember))).toEqual(["HR paperwork"]);
+  });
+
+  it("filters to the tasks that still need an owner", async () => {
+    const { body } = await assign();
+    await delegate(body.id, { "Grant repo access": itHead });
+    await db.onboardingTask.updateMany({ where: { instanceId: body.id, title: "Create accounts" }, data: { assigneeId: null } });
+    expect(titles(await queue(itHead, "?assigned=false"))).toEqual(["Create accounts"]);
+    expect(titles(await queue(itHead, "?assigned=true"))).toEqual(["Grant repo access", "Provision laptop"]);
+    // MANAGER tasks are never "unassigned": they have their manager from the start.
+    expect(titles(await queue(ids.personas.hrAdmin, "?assigned=false"))).toEqual(["Create accounts"]);
+    expect((await send(listTasksRoute, itHead, { url: "http://x/api/v1/onboarding/tasks?assigned=maybe" })).status).toBe(422);
   });
 
   it("includes the hire, calculated status and what the viewer may do", async () => {
     const { body } = await assign();
+    await delegate(body.id);
     const q = await queue(itMember);
     const first = q.data.find((t: any) => t.title === "Create accounts");
     expect(first).toMatchObject({ employee: { id: ids.personas.newHire }, displayStatus: "NOT_STARTED", overdue: true, allowedActions: ["start", "complete"] });
@@ -327,13 +360,14 @@ describe("GET /onboarding/tasks (queue)", () => {
 describe("POST /onboarding/tasks/:id/transitions", () => {
   it("runs a dependency chain to completion and completes the checklist on the last task", async () => {
     const { body } = await assign();
+    await delegate(body.id, { "Provision laptop": itMember2 });
     const id = (t: string) => taskIdByTitle(body.id, t);
 
     let res = await act(itMember, await id("Create accounts"), "start");
     expect(await json(res)).toMatchObject({ status: "IN_PROGRESS", displayStatus: "IN_PROGRESS", allowedActions: ["complete"], instanceStatus: "ACTIVE" });
 
     // The next task is blocked until the first is complete.
-    res = await act(itMember, await id("Provision laptop"), "start");
+    res = await act(itMember2, await id("Provision laptop"), "start");
     expect(res.status).toBe(409);
     expect((await json(res)).error.message).toContain("Create accounts");
 
@@ -342,9 +376,10 @@ describe("POST /onboarding/tasks/:id/transitions", () => {
     expect(done).toMatchObject({ status: "COMPLETED", completedBy: { id: itMember }, allowedActions: [] });
     expect(done.completedAt).toBeTruthy();
 
-    // Now Provision laptop can go, complete it directly from NOT_STARTED.
+    // Now Provision laptop can go (its assignee, not the first person), complete it directly from NOT_STARTED.
     expect((await act(itMember2, await id("Provision laptop"), "complete")).status).toBe(200);
-    expect((await act(itMember, await id("Grant repo access"), "complete")).status).toBe(200);
+    // The head can also work a task themself without assigning it first.
+    expect((await act(itHead, await id("Grant repo access"), "complete")).status).toBe(200);
     expect((await act(ids.personas.manager, await id("Welcome chat"), "complete")).status).toBe(200);
     expect((await db.onboardingInstance.findUniqueOrThrow({ where: { id: body.id } })).status).toBe("ACTIVE");
 
@@ -357,11 +392,14 @@ describe("POST /onboarding/tasks/:id/transitions", () => {
 
   it("rejects people who can see the task but don't own it with 409, and strangers with 404", async () => {
     const { body } = await assign();
+    await delegate(body.id);
     const t = await taskIdByTitle(body.id, "Create accounts");
     const welcome = await taskIdByTitle(body.id, "Welcome chat");
     expect((await act(ids.personas.newHire, t, "start")).status).toBe(409); // the hire sees their checklist
     expect((await act(ids.personas.manager, t, "start")).status).toBe(409); // their manager sees it, but IT owns it
     expect((await act(peopleMember, t, "start")).status).toBe(404); // owns other tasks only; not this one
+    expect((await act(itMember2, t, "start")).status).toBe(404); // same department as the assignee, but not the assignee
+    expect((await act(peopleHead, t, "start")).status).toBe(404); // head of another department
     expect((await act(itMember, welcome, "complete")).status).toBe(404);
     expect((await act(otherManager, welcome, "complete")).status).toBe(404);
     expect((await act(engOutsider, t, "start")).status).toBe(404);
@@ -369,37 +407,34 @@ describe("POST /onboarding/tasks/:id/transitions", () => {
     expect((await db.onboardingTask.findUniqueOrThrow({ where: { id: t } })).status).toBe("NOT_STARTED");
   });
 
-  it("gives HR Admin no override: 409 on tasks they don't own, but they can act on their own department's", async () => {
+  it("gives HR Admin no override: 409 on every task they were not given, and nothing changes", async () => {
     const { body } = await assign();
-    const hr = ids.personas.hrAdmin; // works in People & Culture
+    const hr = ids.personas.hrAdmin; // works in People & Culture, but is not its head
     const before = async () => (await db.onboardingTask.findMany({ where: { instanceId: body.id }, orderBy: { sortOrder: "asc" } })).map((t) => t.status);
     const initial = await before();
-
-    // Not theirs: an IT task, a manager task, and a blocked IT task.
-    for (const title of ["Create accounts", "Welcome chat", "Grant repo access"]) {
+    for (const title of ["Create accounts", "Welcome chat", "Grant repo access", "HR paperwork"]) {
       for (const action of ["start", "complete"]) {
         const res = await act(hr, await taskIdByTitle(body.id, title), action);
         expect(res.status, `${title}/${action}`).toBe(409);
         expect((await json(res)).error.message).toMatch(/not allowed/);
       }
     }
-    expect(await before()).toEqual(initial); // nothing changed
-
-    // Theirs: the People task.
+    expect(await before()).toEqual(initial);
+    // Given a task, they work it like anyone assigned.
+    expect((await giveTask(hr, await taskIdByTitle(body.id, "HR paperwork"), hr)).status).toBe(200);
     expect((await act(hr, await taskIdByTitle(body.id, "HR paperwork"), "complete")).status).toBe(200);
   });
 
-  it("still lets HR Admin see every task, but only offers actions on the ones they own", async () => {
+  it("still lets HR Admin see every task, and offers them only to assign department tasks", async () => {
     const { body } = await assign();
     const hr = ids.personas.hrAdmin;
     const q = await json(await send(listTasksRoute, hr, { url: "http://x/api/v1/onboarding/tasks" }));
     expect(q.total).toBe(5); // full visibility
     const offered = Object.fromEntries(q.data.map((t: any) => [t.title, t.allowedActions]));
-    expect(offered["HR paperwork"]).toEqual(["start", "complete"]);
-    for (const title of ["Create accounts", "Provision laptop", "Grant repo access", "Welcome chat"]) expect(offered[title], title).toEqual([]);
-    // …and the checklist detail agrees.
+    for (const title of ["Create accounts", "Grant repo access", "HR paperwork", "Provision laptop"]) expect(offered[title], title).toEqual(["assign"]);
+    expect(offered["Welcome chat"]).toEqual([]);
     const detail = await json(await send(getInstance, hr, { id: body.id }));
-    expect(detail.tasks.filter((t: any) => t.allowedActions.length > 0).map((t: any) => t.title)).toEqual(["HR paperwork"]);
+    expect(detail.tasks.filter((t: any) => t.allowedActions.length > 0).map((t: any) => t.title).sort()).toEqual(["Create accounts", "Grant repo access", "HR paperwork", "Provision laptop"]);
   });
 
   it("does not let HR Admin finish a checklist on someone else's behalf", async () => {
@@ -413,6 +448,7 @@ describe("POST /onboarding/tasks/:id/transitions", () => {
 
   it("refuses to repeat a transition", async () => {
     const { body } = await assign();
+    await delegate(body.id);
     const t = await taskIdByTitle(body.id, "HR paperwork");
     expect((await act(peopleMember, t, "complete")).status).toBe(200);
     expect((await act(peopleMember, t, "complete")).status).toBe(409);
@@ -424,6 +460,7 @@ describe("POST /onboarding/tasks/:id/transitions", () => {
 
   it("validates the body and the id", async () => {
     const { body } = await assign();
+    await delegate(body.id);
     const t = await taskIdByTitle(body.id, "Create accounts");
     expect((await act(itMember, t, "reopen")).status).toBe(422);
     expect((await send(postTransition, itMember, { body: { action: "start", extra: 1 }, id: t })).status).toBe(422);
@@ -433,6 +470,7 @@ describe("POST /onboarding/tasks/:id/transitions", () => {
 
   it("completes the checklist even when the last two tasks finish at the same moment", async () => {
     const { body } = await assign();
+    await delegate(body.id);
     const id = (t: string) => taskIdByTitle(body.id, t);
     await db.onboardingTask.updateMany({ where: { instanceId: body.id, title: { notIn: ["Welcome chat", "HR paperwork"] } }, data: { status: "COMPLETED" } });
     const results = await Promise.all([
@@ -445,8 +483,112 @@ describe("POST /onboarding/tasks/:id/transitions", () => {
 
   it("lets only one of two identical simultaneous requests succeed", async () => {
     const { body } = await assign();
+    await delegate(body.id);
     const t = await taskIdByTitle(body.id, "HR paperwork");
     const results = await Promise.all([act(peopleMember, t, "complete"), act(peopleMember, t, "complete")]);
     expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+  });
+});
+
+describe("POST /onboarding/tasks/:id/assign", () => {
+  const ownerOf = async (taskId: string) => db.onboardingTask.findUniqueOrThrow({ where: { id: taskId } });
+
+  it("lets the head of the owning department assign a task to a member, who can then work it", async () => {
+    const { body } = await assign();
+    const t = await taskIdByTitle(body.id, "Create accounts");
+    expect(await ownerOf(t)).toMatchObject({ assigneeId: null });
+    expect((await act(itMember, t, "start")).status).toBe(404); // nothing yet: they can't even see it
+
+    const res = await giveTask(itHead, t, itMember);
+    expect(res.status).toBe(200);
+    expect(await json(res)).toMatchObject({ assignee: { id: itMember }, status: "NOT_STARTED", allowedActions: ["start", "complete", "assign"] });
+    expect(await ownerOf(t)).toMatchObject({ assigneeId: itMember, status: "NOT_STARTED" });
+    expect((await act(itMember, t, "start")).status).toBe(200);
+    expect((await act(itMember2, t, "complete")).status).toBe(404);
+  });
+
+  it("shows the assignee what they may do, without the assign button", async () => {
+    const { body } = await assign();
+    const t = await taskIdByTitle(body.id, "Create accounts");
+    await giveTask(itHead, t, itMember);
+    const q = await json(await send(listTasksRoute, itMember, { url: "http://x/api/v1/onboarding/tasks" }));
+    expect(q.data[0]).toMatchObject({ title: "Create accounts", assignee: { id: itMember }, allowedActions: ["start", "complete"] });
+  });
+
+  it("lets the head assign a task to themself, and HR Admin assign any department task", async () => {
+    const { body } = await assign();
+    expect((await giveTask(itHead, await taskIdByTitle(body.id, "Create accounts"), itHead)).status).toBe(200);
+    expect((await giveTask(ids.personas.hrAdmin, await taskIdByTitle(body.id, "Provision laptop"), itMember)).status).toBe(200);
+    expect((await giveTask(ids.personas.hrAdmin, await taskIdByTitle(body.id, "HR paperwork"), peopleMember)).status).toBe(200);
+    expect(await ownerOf(await taskIdByTitle(body.id, "Provision laptop"))).toMatchObject({ assigneeId: itMember });
+  });
+
+  it("refuses everyone else: members, the assignee, another department's head, the hire's manager, the hire", async () => {
+    const { body } = await assign();
+    const t = await taskIdByTitle(body.id, "Create accounts");
+    await giveTask(itHead, t, itMember);
+    // The assignee, the hire's manager and the hire can see the task, so they get 409; strangers get 404.
+    for (const who of [itMember, ids.personas.manager, ids.personas.newHire]) expect((await giveTask(who, t, itMember2)).status).toBe(409);
+    for (const who of [itMember2, peopleHead, otherManager]) expect((await giveTask(who, t, itMember2)).status).toBe(404);
+    expect((await giveTask(null, t, itMember2)).status).toBe(401);
+    expect(await ownerOf(t)).toMatchObject({ assigneeId: itMember }); // unchanged
+  });
+
+  it("only accepts an active member of the owning department (422), and refuses a repeat", async () => {
+    const { body } = await assign();
+    const t = await taskIdByTitle(body.id, "Create accounts");
+    for (const bad of [peopleMember, ids.personas.manager, engOutsider]) {
+      const res = await giveTask(itHead, t, bad);
+      expect(res.status).toBe(422);
+      expect((await json(res)).error.details[0].path).toBe("assigneeId");
+    }
+    expect((await giveTask(itHead, t, crypto.randomUUID())).status).toBe(422);
+    const status = async (code: string) => (await db.userStatus.findUniqueOrThrow({ where: { code } })).id;
+    await db.user.update({ where: { id: itMember2 }, data: { statusId: await status("ON_NOTICE") } });
+    expect((await giveTask(itHead, t, itMember2)).status).toBe(422);
+    await db.user.update({ where: { id: itMember2 }, data: { statusId: await status("ACTIVE") } });
+    expect((await giveTask(itHead, t, itMember)).status).toBe(200);
+    expect((await giveTask(itHead, t, itMember)).status).toBe(422); // already theirs
+    expect(await ownerOf(t)).toMatchObject({ assigneeId: itMember });
+  });
+
+  it("sends an In Progress task back to Not Started when it goes to someone else", async () => {
+    const { body } = await assign();
+    const t = await taskIdByTitle(body.id, "Create accounts");
+    await giveTask(itHead, t, itMember);
+    await act(itMember, t, "start");
+    expect(await ownerOf(t)).toMatchObject({ status: "IN_PROGRESS" });
+    const res = await giveTask(itHead, t, itMember2);
+    expect(await json(res)).toMatchObject({ status: "NOT_STARTED", assignee: { id: itMember2 } });
+    expect(await ownerOf(t)).toMatchObject({ status: "NOT_STARTED", assigneeId: itMember2 });
+    expect((await act(itMember, t, "complete")).status).toBe(404); // the first person has lost it
+  });
+
+  it("works on a blocked task, but not on a completed or manager task", async () => {
+    const { body } = await assign();
+    expect((await giveTask(itHead, await taskIdByTitle(body.id, "Provision laptop"), itMember)).status).toBe(200); // blocked
+    const done = await taskIdByTitle(body.id, "HR paperwork");
+    await db.onboardingTask.update({ where: { id: done }, data: { status: "COMPLETED" } });
+    expect((await giveTask(ids.personas.hrAdmin, done, peopleMember)).status).toBe(409);
+    expect((await giveTask(ids.personas.hrAdmin, await taskIdByTitle(body.id, "Welcome chat"), ids.personas.manager)).status).toBe(409);
+    expect((await giveTask(ids.personas.manager, await taskIdByTitle(body.id, "Welcome chat"), ids.personas.manager)).status).toBe(409);
+  });
+
+  it("validates the body and the id", async () => {
+    const { body } = await assign();
+    const t = await taskIdByTitle(body.id, "Create accounts");
+    expect((await giveTask(itHead, t, "nope")).status).toBe(422);
+    expect((await send(postAssign, itHead, { body: {}, id: t })).status).toBe(422);
+    expect((await send(postAssign, itHead, { body: { assigneeId: itMember, extra: 1 }, id: t })).status).toBe(422);
+    expect((await giveTask(itHead, "nope", itMember)).status).toBe(404);
+    expect((await giveTask(itHead, crypto.randomUUID(), itMember)).status).toBe(404);
+  });
+
+  it("applies two simultaneous assignments one after the other, ending on one of them", async () => {
+    const { body } = await assign();
+    const t = await taskIdByTitle(body.id, "Create accounts");
+    const results = await Promise.all([giveTask(itHead, t, itMember), giveTask(itHead, t, itMember2)]);
+    expect(results.map((r) => r.status)).toEqual([200, 200]);
+    expect([itMember, itMember2]).toContain((await ownerOf(t)).assigneeId);
   });
 });

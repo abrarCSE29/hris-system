@@ -41,17 +41,15 @@ export function scopeInstances(user: AuthUser): Prisma.OnboardingInstanceWhereIn
 }
 
 /**
- * Onboarding tasks a user OWNS (the task queue): tasks owned by their department, plus the
- * MANAGER-type tasks assigned to them. HR Admin owns the whole queue.
+ * Onboarding tasks a user OWNS (the task queue): the tasks assigned to them (a department task the head delegated, or a
+ * MANAGER-type task), and, for the head of a department, every task that department owns, assigned or not. Other members
+ * of a department do not see its unassigned tasks. HR Admin sees the whole queue (read only; see `isTaskOwner`).
  */
 export function scopeOwnedTasks(user: AuthUser): Prisma.OnboardingTaskWhereInput {
   if (user.role.code === "HR_ADMIN") return {};
-  return {
-    OR: [
-      { ownerType: "DEPARTMENT", ownerDepartmentId: user.department.id },
-      { ownerType: "MANAGER", assigneeId: user.id },
-    ],
-  };
+  const scope: Prisma.OnboardingTaskWhereInput[] = [{ assigneeId: user.id }];
+  if (user.headOfDepartmentId) scope.push({ ownerType: "DEPARTMENT", ownerDepartmentId: user.headOfDepartmentId });
+  return { OR: scope };
 }
 
 /** Tasks a user may open: the ones they own, plus every task on a checklist they can see. */

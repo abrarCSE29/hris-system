@@ -115,6 +115,8 @@ export interface TaskActor {
   /** The role's `code`. Callers pass `user.role.code`; this module stays free of database shapes. */
   role: RoleCode;
   departmentId: string;
+  /** Department this user heads, if any. */
+  headOfDepartmentId: string | null;
 }
 
 export interface TaskState {
@@ -128,15 +130,23 @@ export interface TaskState {
   assigneeId: string | null;
 }
 
+const isHeadOfOwner = (task: Pick<TaskState, "ownerDepartmentId">, actor: TaskActor) =>
+  task.ownerDepartmentId !== null && actor.headOfDepartmentId === task.ownerDepartmentId;
+
 /**
- * Task owner = a member of the owning department, or the assigned manager for MANAGER tasks. There is no HR Admin
- * override: HR can see every task but only acts on the ones they own, the same as service requests. (An HR Admin
- * who works in the owning department is a member of it, so is the owner of that department's tasks.)
+ * Task owner (who may start / complete). A DEPARTMENT task is worked by the head of the owning department (who handles
+ * it directly or delegates) and by whoever the head assigned it to; other members of the department are not owners.
+ * A MANAGER task is worked by the assigned manager. There is no HR Admin override: HR can see every task and assign
+ * department tasks, but works only the tasks assigned to them.
  */
 export function isTaskOwner(task: Pick<TaskState, "ownerType" | "ownerDepartmentId" | "assigneeId">, actor: TaskActor): boolean {
-  if (task.ownerType === "DEPARTMENT") return task.ownerDepartmentId !== null && task.ownerDepartmentId === actor.departmentId;
-  return task.assigneeId === actor.id;
+  if (task.assigneeId === actor.id) return true;
+  return task.ownerType === "DEPARTMENT" && isHeadOfOwner(task, actor);
 }
+
+/** Who may hand a department task to someone: the head of the owning department, or HR Admin (covers a department with no head). */
+const canAssignTask = (task: TaskState, actor: TaskActor) =>
+  task.ownerType === "DEPARTMENT" && (actor.role === "HR_ADMIN" || isHeadOfOwner(task, actor));
 
 const TASK_RULES: Record<TaskAction, { from: OnboardingTaskStatus[]; to: OnboardingTaskStatus }> = {
   start: { from: ["NOT_STARTED"], to: "IN_PROGRESS" },
@@ -166,7 +176,39 @@ export function checkTaskTransition(action: TaskAction, task: TaskState, actor: 
   return { ok: true, from: task.status, to: rule.to };
 }
 
-/** Actions this person could take right now. Blocked, finished and not-yours tasks offer none. */
-export function allowedTaskActions(task: TaskState, actor: TaskActor): TaskAction[] {
-  return (Object.keys(TASK_RULES) as TaskAction[]).filter((a) => checkTaskTransition(a, task, actor).ok);
+/** The person a task is being assigned to. */
+export interface TaskAssignee {
+  id: string;
+  departmentId: string;
+  /** The status's `code`. */
+  status: StatusCode;
+}
+
+export type TaskAssignResult =
+  | { ok: true; from: OnboardingTaskStatus; to: OnboardingTaskStatus; assigneeId: string }
+  | { ok: false; reason: "invalid_state" | "not_permitted" | "invalid_assignee"; message: string };
+
+/**
+ * Assigns (or reassigns) a department task. Same rules as assigning a service request: head of the owning department
+ * or HR Admin; the assignee must be an active member of that department; handing an In Progress task to someone else
+ * sends it back to Not Started so the new person starts it themselves. A blocked task can be assigned ahead of time.
+ */
+export function checkTaskAssign(task: TaskState, actor: TaskActor, assignee: TaskAssignee | null): TaskAssignResult {
+  if (task.ownerType !== "DEPARTMENT") {
+    return { ok: false, reason: "invalid_state", message: "This task belongs to the new hire's manager and cannot be assigned" };
+  }
+  if (task.status === "COMPLETED") return { ok: false, reason: "invalid_state", message: "Cannot assign a task that is COMPLETED" };
+  if (!canAssignTask(task, actor)) return { ok: false, reason: "not_permitted", message: "You are not allowed to assign this task" };
+  if (!assignee) return { ok: false, reason: "invalid_assignee", message: "An assignee is required" };
+  if (assignee.departmentId !== task.ownerDepartmentId || !ASSIGNABLE_STATUSES.includes(assignee.status)) {
+    return { ok: false, reason: "invalid_assignee", message: "Assignee must be an active member of the owning department" };
+  }
+  if (assignee.id === task.assigneeId) return { ok: false, reason: "invalid_assignee", message: "That person already has this task" };
+  return { ok: true, from: task.status, to: "NOT_STARTED", assigneeId: assignee.id };
+}
+
+/** Actions this person could attempt right now (drives the buttons). Blocked, finished and not-yours tasks offer none to work. */
+export function allowedTaskActions(task: TaskState, actor: TaskActor): (TaskAction | "assign")[] {
+  const work = (Object.keys(TASK_RULES) as TaskAction[]).filter((a) => checkTaskTransition(a, task, actor).ok);
+  return task.status !== "COMPLETED" && canAssignTask(task, actor) ? [...work, "assign"] : work;
 }
