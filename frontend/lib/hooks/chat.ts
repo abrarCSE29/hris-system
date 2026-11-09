@@ -1,13 +1,22 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, ApiClientError } from "@/lib/api";
 import type { ChatDraft, Paginated, RequestSummary } from "@/lib/types";
 
-/** Asks the assistant to fill in the request form from one message. Nothing is saved; a failure is announced as a toast. */
+/**
+ * Asks the assistant to fill in the request form from one message. Nothing is saved; a failure is announced as a toast. When the
+ * AI service is down (the backend answers 503 AI_UNAVAILABLE, whatever the reason) the toast says so, and the rest of the page is untouched.
+ */
 export function useChatDraft() {
   return useMutation({
     mutationFn: (body: { message: string; page: string }) => api<ChatDraft>("/requests/chat-draft", { method: "POST", body }),
+    meta: {
+      failure: (error: unknown) =>
+        error instanceof ApiClientError && error.code === "AI_UNAVAILABLE"
+          ? "The AI service is currently unavailable. You can still fill in the form yourself."
+          : undefined,
+    },
   });
 }
 
