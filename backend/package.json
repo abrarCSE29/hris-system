@@ -8,10 +8,12 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "db:setup": "prisma migrate deploy && tsx prisma/seed-if-empty.ts",
+    "docker:start": "npm run db:setup && next start -p 4000",
     "start": "next start -p 4000",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "db:up": "docker compose -f ../docker-compose.yml up -d --wait",
+    "db:up": "docker compose -f ../docker-compose.yml up -d --wait db",
     "db:down": "docker compose -f ../docker-compose.yml down"
   },
   "dependencies": {
