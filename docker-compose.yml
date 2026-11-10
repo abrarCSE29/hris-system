@@ -1,3 +1,7 @@
+# One command runs the whole system:  docker compose up --build
+# Open http://localhost:3000 (the demo accounts are listed in README.md).
+# Settings are optional: copy .env.example to .env to change them.
+
 services:
   db:
     image: postgres:17
@@ -6,7 +10,7 @@ services:
       POSTGRES_PASSWORD: hris
       POSTGRES_DB: hris
     ports:
-      - "5433:5432"
+      - "${DB_PORT:-5433}:5432"
     volumes:
       - hris_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -14,6 +18,47 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+
+  # Drafts a request from a chat message. Optional: without GROQ_API_KEY the request form still works.
+  ai-service:
+    build: ./ai-service
+    environment:
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-local-demo-token-change-me}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Applies the database changes, adds demo data if the database is empty, then serves the data to the website.
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://hris:hris@db:5432/hris
+      JWT_SECRET: ${JWT_SECRET:-local-demo-secret-change-me-at-least-32-characters}
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-local-demo-token-change-me}
+      # Allows demo data on this database. It is only added when the database has no people, so it never wipes anything.
+      SEED_CONFIRM: "yes"
+      SEED_PASSWORD: ${SEED_PASSWORD:-Password123!}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/v1/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
 
 volumes:
   hris_pgdata:

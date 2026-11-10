@@ -1,0 +1,2 @@
+# Settings for `docker compose up` (copy .env.example to .env). Never commit it.
+.env
