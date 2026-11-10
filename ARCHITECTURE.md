@@ -97,7 +97,7 @@ No code is shared between the services; the contract is the HTTP API (§2.10 and
 
 **Running it.** `docker compose up --build` starts all four parts (database, backend, AI service, frontend). On start the backend applies the migrations and adds the demo data only if the database has no people (`backend/prisma/seed-if-empty.ts`), so a restart never wipes data. Each service has a `Dockerfile`. Only the frontend (port 3000) and the database (port 5433) are published to the host.
 
-**Not verified:** deployment. The project is designed for Vercel (two projects) and a hosted PostgreSQL, but this repository has only been run locally.
+**Hosting.** The live web app (the frontend and the backend) is hosted on **Vercel** at <https://hris-system-livid.vercel.app/login>, and the AI service is hosted on **Render**. Locally, Docker Compose runs the same four parts on one machine (see above). `docs/developer-guide.md` has the Vercel setup notes; the Render setup for the AI service is not written up there.
 
 ## 2.2 How the modules relate to the shared parts
 
