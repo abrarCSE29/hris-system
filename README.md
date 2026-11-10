@@ -1,5 +1,7 @@
 # HRIS: Service Requests & Employee Onboarding
 
+Live app: <https://hris-system-livid.vercel.app/login>
+
 ## What you need
 
 **Docker** with Docker Compose. Nothing else is needed to run the system.
