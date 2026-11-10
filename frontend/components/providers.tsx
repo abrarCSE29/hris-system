@@ -62,7 +62,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       {children}
-      <Toaster position="top-right" />
+      <Toaster position="top-center" />
       <ServiceUnavailableDialog />
     </QueryClientProvider>
   );
